@@ -1,4 +1,4 @@
-/// <reference types="vite/client" />
+// /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
   readonly VITE_API_KEY: string
@@ -9,9 +9,12 @@ interface ImportMeta {
   readonly env: ImportMetaEnv
 }
 
-declare const process: {
-  env: {
+// Augment the global NodeJS namespace to include API_KEY in ProcessEnv.
+// This avoids the "Cannot redeclare block-scoped variable 'process'" error
+// by merging with the existing type definition instead of redeclaring the variable.
+declare namespace NodeJS {
+  interface ProcessEnv {
     API_KEY: string;
     [key: string]: string | undefined;
   }
-};
+}

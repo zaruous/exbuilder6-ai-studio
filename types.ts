@@ -43,3 +43,24 @@ export interface GenerationSettings {
   includeComments: boolean;
   basePackage: string;
 }
+
+// Community Features
+export interface Comment {
+  id: string;
+  author: string;
+  content: string;
+  rating: number; // 1-5
+  createdAt: string;
+}
+
+export interface SharedComponent {
+  id: string;
+  title: string;
+  description: string;
+  author: string;
+  generationResult: GenerationResult; // The code payload
+  comments: Comment[];
+  likes: number;
+  createdAt: string;
+  tags: string[];
+}
