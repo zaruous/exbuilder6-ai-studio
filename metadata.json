@@ -1,0 +1,5 @@
+{
+  "name": "eXbuilder6 AI Studio",
+  "description": "An intelligent dashboard for generating eXbuilder6 UI components. Input a prompt to receive structured .clx (XML) and .js code, with integrated logs and a component dashboard.",
+  "requestFramePermissions": []
+}
