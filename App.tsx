@@ -80,12 +80,26 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRegisterConfirm = async (title: string, description: string, author: string) => {
-    if (!result) return;
+  const handleRegisterConfirm = async (
+      title: string, 
+      description: string, 
+      author: string,
+      manualResult?: GenerationResult
+    ) => {
+    
+    const targetResult = manualResult || result;
+
+    if (!targetResult) {
+        alert('No code to register!');
+        return;
+    }
+
     setIsRegisterOpen(false);
-    await registerComponent(title, description, author, result);
+    await registerComponent(title, description, author, targetResult);
     await refreshCommunity();
-    alert('Component registered successfully to the community library!');
+    
+    // Switch to explore view to see the new item
+    setViewMode('explore');
   };
 
   const handleLoadFromCommunity = (item: SharedComponent) => {
@@ -108,6 +122,7 @@ const App: React.FC = () => {
         isOpen={isRegisterOpen}
         onClose={() => setIsRegisterOpen(false)}
         onConfirm={handleRegisterConfirm}
+        hasResult={!!result}
       />
 
       {/* Header */}
@@ -258,21 +273,21 @@ const App: React.FC = () => {
                 />
                 </div>
                 
-                {result && (
                 <div className="flex items-center gap-2">
                     <button 
                         onClick={() => setIsRegisterOpen(true)}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-600/10 border border-emerald-600/50 text-emerald-500 hover:bg-emerald-600 hover:text-white transition-all text-xs font-semibold"
+                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all text-xs font-semibold ${result ? 'bg-emerald-600/10 border-emerald-600/50 text-emerald-500 hover:bg-emerald-600 hover:text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'}`}
                     >
-                        <Share2 className="w-3.5 h-3.5" />
-                        Register / Share
+                        {result ? <Share2 className="w-3.5 h-3.5" /> : <div className="w-3.5 h-3.5 flex items-center justify-center">+</div>}
+                        {result ? 'Register / Share' : 'Upload Code'}
                     </button>
-                    <div className="text-xs text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center gap-2">
-                        <Play className="w-3 h-3 text-emerald-500" />
-                        Output Ready
-                    </div>
+                    {result && (
+                        <div className="text-xs text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 flex items-center gap-2">
+                            <Play className="w-3 h-3 text-emerald-500" />
+                            Output Ready
+                        </div>
+                    )}
                 </div>
-                )}
             </div>
 
             {/* Content Area */}
@@ -349,7 +364,7 @@ const App: React.FC = () => {
       {/* Footer */}
       <footer className="h-8 border-t border-slate-800 bg-slate-900 px-6 flex items-center justify-between text-[10px] text-slate-500 font-medium z-20">
         <div className="flex items-center gap-4">
-          <span>v1.1.0-beta</span>
+          <span>v1.2.0-beta</span>
           <span className="flex items-center gap-1">
              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> API Connected
           </span>

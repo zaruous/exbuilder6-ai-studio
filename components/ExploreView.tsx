@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Search, Star, MessageSquare, Download, User, Calendar, X, Send } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, Star, MessageSquare, Download, User, Calendar, X, Send, Flame, Clock, History } from 'lucide-react';
 import { SharedComponent, Comment } from '../types';
 import { addComment } from '../services/communityService';
 
@@ -10,20 +10,64 @@ interface ExploreViewProps {
   onRefreshItems: () => void;
 }
 
+type SortCategory = 'popular' | 'newest' | 'history';
+
 const ExploreView: React.FC<ExploreViewProps> = ({ items, onLoadComponent, onRefreshItems }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItem, setSelectedItem] = useState<SharedComponent | null>(null);
+  const [activeCategory, setActiveCategory] = useState<SortCategory>('popular');
+  const [historyIds, setHistoryIds] = useState<string[]>([]);
   
   // Comment Form State
   const [commentContent, setCommentContent] = useState('');
   const [commentRating, setCommentRating] = useState(5);
   const [commentAuthor, setCommentAuthor] = useState('');
 
-  const filteredItems = items.filter(item => 
-    item.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // Load history from localStorage
+  useEffect(() => {
+    const savedHistory = localStorage.getItem('exbuilder_history');
+    if (savedHistory) {
+        try {
+            setHistoryIds(JSON.parse(savedHistory));
+        } catch (e) {
+            console.error("Failed to parse history", e);
+        }
+    }
+  }, []);
+
+  const addToHistory = (id: string) => {
+    const newHistory = [id, ...historyIds.filter(h => h !== id)].slice(0, 20); // Keep last 20
+    setHistoryIds(newHistory);
+    localStorage.setItem('exbuilder_history', JSON.stringify(newHistory));
+  };
+
+  const handleViewDetails = (item: SharedComponent) => {
+    setSelectedItem(item);
+    addToHistory(item.id);
+  };
+
+  // Filtering and Sorting Logic
+  const getProcessedItems = () => {
+    // 1. Filter by Search Term
+    let filtered = items.filter(item => 
+        item.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        item.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
+    // 2. Sort/Filter by Category
+    if (activeCategory === 'popular') {
+        return [...filtered].sort((a, b) => b.likes - a.likes);
+    } else if (activeCategory === 'newest') {
+        return [...filtered].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } else if (activeCategory === 'history') {
+        return filtered.filter(item => historyIds.includes(item.id))
+                       .sort((a, b) => historyIds.indexOf(a.id) - historyIds.indexOf(b.id)); // Maintain history order (recent first)
+    }
+    return filtered;
+  };
+
+  const displayedItems = getProcessedItems();
 
   const handlePostComment = async () => {
     if (!selectedItem || !commentContent.trim()) return;
@@ -31,8 +75,7 @@ const ExploreView: React.FC<ExploreViewProps> = ({ items, onLoadComponent, onRef
     await addComment(selectedItem.id, commentAuthor, commentContent, commentRating);
     setCommentContent('');
     setCommentRating(5);
-    onRefreshItems(); // Refresh to get new comment
-    // Simple optimistic update for UI could be done here too
+    onRefreshItems();
   };
 
   // Helper for star display
@@ -49,42 +92,89 @@ const ExploreView: React.FC<ExploreViewProps> = ({ items, onLoadComponent, onRef
   return (
     <div className="flex flex-col h-full bg-slate-950 text-slate-200">
       
-      {/* Search Header */}
-      <div className="p-6 border-b border-slate-800 bg-slate-900/50">
-        <div className="max-w-2xl mx-auto relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" />
-            <input 
-                type="text" 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search community components, authors, or tags..."
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-white placeholder:text-slate-500"
-            />
-        </div>
+      {/* Header Area */}
+      <div className="border-b border-slate-800 bg-slate-900/50">
+          <div className="max-w-7xl mx-auto px-6 pt-6 pb-2">
+            
+            {/* Search Bar */}
+            <div className="relative mb-6">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 w-5 h-5" />
+                <input 
+                    type="text" 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search community components, authors, or tags..."
+                    className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-12 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-white placeholder:text-slate-500 shadow-lg"
+                />
+            </div>
+
+            {/* Category Tabs */}
+            <div className="flex gap-6">
+                <button 
+                    onClick={() => setActiveCategory('popular')}
+                    className={`flex items-center gap-2 pb-3 border-b-2 text-sm font-medium transition-all ${activeCategory === 'popular' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                >
+                    <Flame className="w-4 h-4" />
+                    Popular
+                </button>
+                <button 
+                    onClick={() => setActiveCategory('newest')}
+                    className={`flex items-center gap-2 pb-3 border-b-2 text-sm font-medium transition-all ${activeCategory === 'newest' ? 'border-emerald-500 text-emerald-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                >
+                    <Clock className="w-4 h-4" />
+                    Newest
+                </button>
+                <button 
+                    onClick={() => setActiveCategory('history')}
+                    className={`flex items-center gap-2 pb-3 border-b-2 text-sm font-medium transition-all ${activeCategory === 'history' ? 'border-blue-500 text-blue-500' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                >
+                    <History className="w-4 h-4" />
+                    Recently Viewed
+                </button>
+            </div>
+          </div>
       </div>
 
       {/* Grid Content */}
       <div className="flex-1 overflow-y-auto p-6">
-         {filteredItems.length === 0 ? (
+         {displayedItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-slate-500 opacity-60">
-                <Search className="w-12 h-12 mb-4" />
-                <p>No components found matching your search.</p>
+                {activeCategory === 'history' ? (
+                     <>
+                        <History className="w-12 h-12 mb-4" />
+                        <p>You haven't viewed any components yet.</p>
+                     </>
+                ) : (
+                    <>
+                        <Search className="w-12 h-12 mb-4" />
+                        <p>No components found.</p>
+                    </>
+                )}
             </div>
          ) : (
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-                {filteredItems.map(item => {
+                {displayedItems.map(item => {
                     const avgRating = item.comments.length 
                         ? Math.round(item.comments.reduce((acc, c) => acc + c.rating, 0) / item.comments.length) 
                         : 0;
+                    
+                    // Simple "New" badge logic (if created within last 2 days)
+                    const isNew = new Date(item.createdAt).getTime() > Date.now() - 86400000 * 2;
 
                     return (
-                        <div key={item.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-slate-600 transition-all hover:shadow-xl hover:shadow-blue-900/10 flex flex-col">
-                            <div className="p-4 border-b border-slate-800/50 h-32 relative group overflow-hidden bg-slate-950">
+                        <div key={item.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-slate-600 transition-all hover:shadow-xl hover:shadow-blue-900/10 flex flex-col group">
+                            <div className="p-4 border-b border-slate-800/50 h-36 relative overflow-hidden bg-slate-950">
                                 {/* Simple Mock Visual */}
-                                <div className="absolute inset-0 opacity-30 scale-90 group-hover:scale-100 transition-transform duration-500" dangerouslySetInnerHTML={{__html: item.generationResult.previewMock || ''}} />
-                                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 to-transparent" />
+                                <div className="absolute inset-0 opacity-40 scale-95 group-hover:scale-100 transition-transform duration-500" dangerouslySetInnerHTML={{__html: item.generationResult.previewMock || ''}} />
+                                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/20 to-transparent" />
+                                
+                                <div className="absolute top-3 right-3 flex gap-2">
+                                    {isNew && <span className="bg-emerald-500/80 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow">NEW</span>}
+                                    {item.likes > 50 && <span className="bg-amber-500/80 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow flex items-center gap-1"><Flame className="w-3 h-3" /> HOT</span>}
+                                </div>
+
                                 <div className="absolute bottom-4 left-4 right-4">
-                                    <h3 className="font-bold text-white truncate">{item.title}</h3>
+                                    <h3 className="font-bold text-white truncate text-lg">{item.title}</h3>
                                     <div className="flex items-center gap-2 text-xs text-slate-400 mt-1">
                                         <User className="w-3 h-3" /> {item.author}
                                         <span className="text-slate-600">•</span>
@@ -102,17 +192,21 @@ const ExploreView: React.FC<ExploreViewProps> = ({ items, onLoadComponent, onRef
                             </div>
                             <div className="p-3 bg-slate-950/30 border-t border-slate-800 flex items-center justify-between">
                                 <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-1 text-xs text-amber-400">
+                                    <div className="flex items-center gap-1 text-xs text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
                                         <Star className="w-3.5 h-3.5 fill-current" />
-                                        <span>{avgRating || '-'}</span>
+                                        <span>{avgRating || 'N/A'}</span>
                                     </div>
                                     <div className="flex items-center gap-1 text-xs text-slate-500">
                                         <MessageSquare className="w-3.5 h-3.5" />
                                         <span>{item.comments.length}</span>
                                     </div>
+                                    <div className="flex items-center gap-1 text-xs text-rose-400/70">
+                                        <Flame className="w-3.5 h-3.5" />
+                                        <span>{item.likes}</span>
+                                    </div>
                                 </div>
                                 <button 
-                                    onClick={() => setSelectedItem(item)}
+                                    onClick={() => handleViewDetails(item)}
                                     className="px-3 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors border border-slate-700"
                                 >
                                     View Details

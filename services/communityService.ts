@@ -29,9 +29,9 @@ const MOCK_DB: SharedComponent[] = [
     title: 'Sales Dashboard Grid',
     description: 'High performance grid layout for daily sales metrics. Includes pagination logic in the controller.',
     author: 'grid_wizard',
-    likes: 15,
+    likes: 150,
     tags: ['dashboard', 'grid', 'analytics'],
-    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+    createdAt: new Date(Date.now() - 86400000 * 10).toISOString(), // 10 days ago
     comments: [],
     generationResult: {
         clxCode: `<html ...><!-- Grid Mock --></html>`,
@@ -40,6 +40,42 @@ const MOCK_DB: SharedComponent[] = [
         logs: [],
         explanation: 'Dashboard grid example',
         previewMock: '<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; color:white;"><div style="background:#333; height:100px;">Chart 1</div><div style="background:#333; height:100px;">Chart 2</div></div>'
+    }
+  },
+  {
+    id: '3',
+    title: 'Dark Mode Login',
+    description: 'A sleek login screen with dark mode toggle and social login buttons.',
+    author: 'ui_designer',
+    likes: 85,
+    tags: ['login', 'auth', 'darkmode'],
+    createdAt: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago (Newest)
+    comments: [],
+    generationResult: {
+        clxCode: `<html ...><!-- Login Mock --></html>`,
+        jsCode: `/* Login Logic */`,
+        javaFiles: [],
+        logs: [],
+        explanation: 'Login Template',
+        previewMock: '<div style="padding:40px; background:#111; color:white; border-radius:8px; text-align:center;"><h2>Welcome Back</h2><input style="margin:5px; display:block; width:100%" placeholder="ID"/><input style="margin:5px; display:block; width:100%" type="password" placeholder="PW"/><button style="background:blue; width:100%; color:white;">Login</button></div>'
+    }
+  },
+  {
+    id: '4',
+    title: 'Tree Navigation Menu',
+    description: 'Recursive tree structure for file navigation or organization charts.',
+    author: 'tree_lover',
+    likes: 42,
+    tags: ['tree', 'navigation', 'recursive'],
+    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(), // 5 days ago
+    comments: [],
+    generationResult: {
+        clxCode: `<html ...><!-- Tree Mock --></html>`,
+        jsCode: `/* Tree Logic */`,
+        javaFiles: [],
+        logs: [],
+        explanation: 'Tree Structure',
+        previewMock: '<div style="color:white; text-align:left;"><div>📁 Root</div><div style="padding-left:20px">📄 File 1</div><div style="padding-left:20px">📁 Folder A</div><div style="padding-left:40px">📄 File 2</div></div>'
     }
   }
 ];
