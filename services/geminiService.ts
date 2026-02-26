@@ -189,16 +189,23 @@ async function callProviderForStage(
 export async function generateExBuilderCode(
     prompt: string, 
     settings: GenerationSettings,
-    onProgress?: (stage: GenerationStage, partialResult: Partial<GenerationResult>) => void
+    onProgress?: (stage: GenerationStage, partialResult: Partial<GenerationResult>) => void,
+    selectedStages?: GenerationStage[]
 ): Promise<GenerationResult> {
-    const stages: GenerationStage[] = ['sql', 'server', 'layout', 'script'];
+    const allStages: GenerationStage[] = ['sql', 'server', 'layout', 'script'];
+    
+    // 사용자가 선택한 단계가 있더라도, allStages의 순서를 기준으로 필터링하여 실행 순서를 보장합니다.
+    const stagesToRun = selectedStages && selectedStages.length > 0 
+        ? allStages.filter(stage => selectedStages.includes(stage)) 
+        : allStages;
+    
     let finalResult: GenerationResult = {
-        logs: ["Starting sequential generation..."],
+        logs: [`Starting generation for: ${stagesToRun.join(', ')}...`],
         explanation: "",
         javaFiles: []
     };
 
-    for (const stage of stages) {
+    for (const stage of stagesToRun) {
         finalResult.logs.push(`Generating ${stage.toUpperCase()}...`);
         const partial = await callProviderForStage(stage, prompt, settings, finalResult);
         

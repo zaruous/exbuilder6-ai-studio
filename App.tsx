@@ -24,12 +24,21 @@ import {
   Globe,
   Share2,
   Search,
-  Database
+  Database,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 
 type ViewMode = 'generator' | 'explore';
 
 const SETTINGS_KEY = 'exbuilder_settings';
+
+const STAGE_OPTIONS: { value: GenerationStage; label: string; icon: any }[] = [
+  { value: 'sql', label: 'SQL', icon: Database },
+  { value: 'server', label: 'Server', icon: Server },
+  { value: 'layout', label: 'Layout', icon: Layout },
+  { value: 'script', label: 'Script', icon: Code2 },
+];
 
 const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('generator');
@@ -40,6 +49,8 @@ const App: React.FC = () => {
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>(TabType.CLX);
   const [error, setError] = useState<string | null>(null);
+  const [selectedStages, setSelectedStages] = useState<GenerationStage[]>([]);
+  const [isStageMenuOpen, setIsStageMenuOpen] = useState(false);
 
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -99,13 +110,32 @@ const App: React.FC = () => {
     setSharedItems(items);
   };
 
+  const toggleStage = (stage: GenerationStage) => {
+    setSelectedStages(prev => 
+      prev.includes(stage) 
+        ? prev.filter(s => s !== stage) 
+        : [...prev, stage]
+    );
+  };
+
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     
     setLoading(true);
     setError(null);
     setResult(null); // Clear previous
-    setActiveTab(TabType.SQL); // Start with SQL tab
+    setIsStageMenuOpen(false); // Close stage menu
+    
+    // Determine initial tab based on selection
+    if (selectedStages.length > 0) {
+        const first = selectedStages[0];
+        if (first === 'sql') setActiveTab(TabType.SQL);
+        else if (first === 'server') setActiveTab(TabType.SERVER);
+        else if (first === 'layout') setActiveTab(TabType.CLX);
+        else if (first === 'script') setActiveTab(TabType.JS);
+    } else {
+        setActiveTab(TabType.SQL); // Default
+    }
 
     try {
       const data = await generateExBuilderCode(prompt, settings, (stage, partial) => {
@@ -122,7 +152,7 @@ const App: React.FC = () => {
         if (stage === 'server') setActiveTab(TabType.SERVER);
         if (stage === 'layout') setActiveTab(TabType.CLX);
         if (stage === 'script') setActiveTab(TabType.JS);
-      });
+      }, selectedStages);
       
       setResult(data);
     } catch (err: any) {
@@ -249,6 +279,58 @@ const App: React.FC = () => {
                 Describe the UI component or logic you want to build in eXbuilder6. 
                 The AI will generate the .clx XML and controller .js files.
                 </p>
+            </div>
+
+            {/* Stage Selector Dropdown */}
+            <div className="relative">
+                <button
+                    onClick={() => setIsStageMenuOpen(!isStageMenuOpen)}
+                    className="w-full flex items-center justify-between px-4 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-xs text-slate-300 hover:border-slate-600 transition-all"
+                >
+                    <div className="flex items-center gap-2">
+                        <Settings className="w-3.5 h-3.5 text-blue-400" />
+                        <span>
+                            {selectedStages.length === 0 
+                                ? 'Generate All Components' 
+                                : `Target: ${selectedStages.map(s => s.toUpperCase()).join(', ')}`}
+                        </span>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 transition-transform ${isStageMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isStageMenuOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="p-2 border-b border-slate-800 bg-slate-800/20">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase px-2">Select Stages (Empty = All)</span>
+                        </div>
+                        <div className="p-1">
+                            {STAGE_OPTIONS.map((opt) => {
+                                const isSelected = selectedStages.includes(opt.value);
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        onClick={() => toggleStage(opt.value)}
+                                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all ${isSelected ? 'bg-blue-600/10 text-blue-400' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <opt.icon className={`w-3.5 h-3.5 ${isSelected ? 'text-blue-400' : 'text-slate-500'}`} />
+                                            <span>{opt.label}</span>
+                                        </div>
+                                        {isSelected && <Check className="w-3.5 h-3.5" />}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {selectedStages.length > 0 && (
+                            <button 
+                                onClick={() => setSelectedStages([])}
+                                className="w-full py-2 text-[10px] text-slate-500 hover:text-white hover:bg-slate-800 border-t border-slate-800 transition-all"
+                            >
+                                Reset to Default (All)
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
 
             <div className="flex-1 relative group">
