@@ -1,11 +1,38 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { GenerationResult, GenerationSettings } from "../types";
+import { GenerationResult, GenerationSettings, GenerationStage } from "../types";
+
+// Helper to get stage-specific instructions
+const getStagePrompt = (stage: GenerationStage, userPrompt: string, context?: Partial<GenerationResult>) => {
+  switch (stage) {
+    case 'sql':
+      return `[TASK: SQL GENERATION] 
+      Create database tables for: ${userPrompt}. 
+      Return only valid SQL scripts for the target DBMS.`;
+    case 'server':
+      return `[TASK: SERVER GENERATION]
+      Create Spring Boot Java files (Controller, Service, Model) based on this SQL:
+      ${context?.sqlCode || 'Not provided'}
+      Original Requirement: ${userPrompt}`;
+    case 'layout':
+      return `[TASK: LAYOUT GENERATION]
+      Create eXbuilder6 .clx XML code.
+      Base on these Server/DB specs:
+      ${(context?.javaFiles || []).map(f => f.fileName).join(', ')}
+      Original Requirement: ${userPrompt}`;
+    case 'script':
+      return `[TASK: SCRIPT GENERATION]
+      Create eXbuilder6 .js controller code.
+      Base on this Layout XML:
+      ${context?.clxCode || 'Not provided'}
+      Original Requirement: ${userPrompt}`;
+  }
+};
 
 // Common System Instructions for all providers
 const getSystemInstruction = (settings: GenerationSettings) => {
   const langInstruction = settings.language === 'ko' 
-    ? "All explanations and comments must be in Korean." 
+    ? "모든 설명과 주석은 한국어로 작성하세요." 
     : "All explanations and comments must be in English.";
     
   const commentInstruction = settings.includeComments 
@@ -18,211 +45,182 @@ const getSystemInstruction = (settings: GenerationSettings) => {
   ${langInstruction}
   ${commentInstruction}
   
-  Tasks:
-  1. Generate valid eXbuilder6 .clx XML.
-  2. Generate corresponding .js controller logic.
-  3. Generate Java Spring Boot server code (Controller, Service, Model).
-  
   Java Package Rules:
   - Base Package: ${basePackage}
   - Controller: ${basePackage}.resource.complex.[serviceName].controller
-  - Model: ${basePackage}.resource.complex.[serviceName].[serviceName].model (or just .model if cleaner, but favor nested if complexity implies)
+  - Model: ${basePackage}.resource.complex.[serviceName].[serviceName].model
   - Service: ${basePackage}.resource.complex.[serviceName].service
   
-  Always generate valid, compilable code.`;
+  Always generate valid, compilable code. Return results in strictly valid JSON.`;
 };
 
-// JSON Schema for OpenAI/Ollama prompting (since they handle schema differently than Gemini SDK)
-const JSON_OUTPUT_PROMPT = `
-  You MUST return the result strictly as a valid JSON object matching this TypeScript interface:
+// JSON Schema for OpenAI/Ollama prompting
+const getJsonSchemaPrompt = (stage: GenerationStage) => {
+  const baseSchema = `Return a JSON object with:
+    "logs": string[],
+    "explanation": string`;
 
-  interface GenerationResult {
-    clxCode: string; // The XML content for the eXbuilder6 .clx file
-    jsCode: string; // The JavaScript content for the eXbuilder6 .js file
-    javaFiles: Array<{
-       fileName: string; // e.g. "UserService.java"
-       packagePath: string; // e.g. "com.example.resource.complex.user.service"
-       content: string; // The full Java file content
-       type: "controller" | "service" | "model";
-    }>;
-    logs: string[]; // List of strings describing build steps
-    explanation: string; // Summary of what was generated
-    previewMock: string; // Simple HTML string to visually mock the component structure (use inline styles)
+  switch (stage) {
+    case 'sql': return `${baseSchema}, "sqlCode": string`;
+    case 'server': return `${baseSchema}, "javaFiles": Array<{fileName:string, packagePath:string, content:string, type:"controller"|"service"|"model"}>`;
+    case 'layout': return `${baseSchema}, "clxCode": string, "previewMock": string (HTML mockup)`;
+    case 'script': return `${baseSchema}, "jsCode": string`;
   }
+};
 
-  Do not include markdown code fences (like \`\`\`json) in the response. Just the raw JSON string.
-`;
+// Unified Request Handler for all Providers per Stage
+async function callProviderForStage(
+    stage: GenerationStage, 
+    prompt: string, 
+    settings: GenerationSettings, 
+    context?: Partial<GenerationResult>
+): Promise<Partial<GenerationResult>> {
+    const fullPrompt = getStagePrompt(stage, prompt, context);
+    const systemInstruction = getSystemInstruction(settings);
+    const currentConfig = settings.providerConfigs[settings.provider];
 
-// Gemini Implementation
-async function callGemini(prompt: string, settings: GenerationSettings): Promise<GenerationResult> {
-  // Use process.env.API_KEY exclusively as per guidelines.
-  // The key's availability is handled externally and is a hard requirement.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const systemInstruction = getSystemInstruction(settings);
+    if (settings.provider === 'gemini') {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        
+        // Define dynamic schema based on stage
+        const properties: any = {
+            logs: { type: Type.ARRAY, items: { type: Type.STRING } },
+            explanation: { type: Type.STRING }
+        };
 
-  const response = await ai.models.generateContent({
-    model: settings.modelName || "gemini-3-pro-preview",
-    contents: `Generate eXbuilder6 and Java Spring Boot code for: ${prompt}. 
-    Provide:
-    1. CLX (XML)
-    2. JS Controller
-    3. List of Java files (Controller, Model, Service) with their full package paths and content.
-    4. Logs and explanation.`,
-    config: {
-      temperature: settings.temperature,
-      systemInstruction: systemInstruction,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          clxCode: {
-            type: Type.STRING,
-            description: "The XML content for the eXbuilder6 .clx file.",
-          },
-          jsCode: {
-            type: Type.STRING,
-            description: "The JavaScript content for the eXbuilder6 .js file.",
-          },
-          javaFiles: {
-            type: Type.ARRAY,
-            description: "List of Java server files generated.",
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                fileName: { type: Type.STRING, description: "FileName.java" },
-                packagePath: { type: Type.STRING, description: "Full package path (e.g. com.example...)" },
-                content: { type: Type.STRING, description: "Full Java file content" },
-                type: { type: Type.STRING, enum: ["controller", "service", "model"] }
-              },
-              required: ["fileName", "packagePath", "content", "type"]
+        if (stage === 'sql') properties.sqlCode = { type: Type.STRING };
+        if (stage === 'server') {
+            properties.javaFiles = {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        fileName: { type: Type.STRING },
+                        packagePath: { type: Type.STRING },
+                        content: { type: Type.STRING },
+                        type: { type: Type.STRING, enum: ["controller", "service", "model"] }
+                    },
+                    required: ["fileName", "packagePath", "content", "type"]
+                }
+            };
+        }
+        if (stage === 'layout') {
+            properties.clxCode = { type: Type.STRING };
+            properties.previewMock = { type: Type.STRING };
+        }
+        if (stage === 'script') properties.jsCode = { type: Type.STRING };
+
+        const response = await ai.models.generateContent({
+            model: currentConfig.modelName || "gemini-3-pro-preview",
+            contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
+            config: {
+                temperature: settings.temperature,
+                systemInstruction: systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: properties,
+                    required: ["logs", "explanation"]
+                }
             }
-          },
-          logs: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-            description: "A list of logs detailing the build process.",
-          },
-          explanation: {
-            type: Type.STRING,
-            description: "A summary of what was generated.",
-          },
-          previewMock: {
-            type: Type.STRING,
-            description: "An HTML string that represents a visual mock of the UI component.",
-          }
-        },
-        required: ["clxCode", "jsCode", "javaFiles", "logs", "explanation"],
-      },
-    },
-  });
+        });
+        
+        if (!response.text) {
+            throw new Error("Empty response from AI");
+        }
+        
+        return JSON.parse(response.text);
+    } 
+    
+    if (settings.provider === 'openai' || settings.provider === 'ollama') {
+        const isDefaultOllama = settings.provider === 'ollama' && (!currentConfig.baseUrl || currentConfig.baseUrl.includes('localhost:11434'));
+        const defaultBaseUrl = settings.provider === 'ollama' ? '/ollama-api/v1' : 'https://api.openai.com/v1';
+        let baseUrl = isDefaultOllama ? '/ollama-api/v1' : (currentConfig.baseUrl || defaultBaseUrl);
+        
+        if (settings.provider === 'ollama' && !baseUrl.includes('/v1')) {
+            baseUrl = baseUrl.replace(/\/+$/, "") + "/v1";
+        }
 
-  const resultStr = response.text;
-  if (!resultStr) throw new Error("Empty response from Gemini");
-  return JSON.parse(resultStr) as GenerationResult;
-}
+        const sanitizedBaseUrl = baseUrl.replace(/\/+$/, "");
+        const jsonPrompt = getJsonSchemaPrompt(stage);
+        
+        const response = await fetch(`${sanitizedBaseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer sk-dummy` },
+            body: JSON.stringify({
+                model: currentConfig.modelName,
+                messages: [
+                    { role: "system", content: systemInstruction + "\n" + jsonPrompt },
+                    { role: "user", content: fullPrompt }
+                ],
+                temperature: settings.temperature,
+                response_format: { type: "json_object" } 
+            })
+        });
 
-// OpenAI / VLLM / Ollama Implementation (via Fetch)
-async function callOpenAICompatible(prompt: string, settings: GenerationSettings): Promise<GenerationResult> {
-  const baseUrl = settings.baseUrl || (settings.provider === 'ollama' ? 'http://localhost:11434/v1' : 'https://api.openai.com/v1');
-  // API Key handling: assuming process.env or dummy for non-Gemini providers as we removed UI input.
-  const apiKey = 'sk-dummy'; 
-  
-  const systemInstruction = getSystemInstruction(settings) + JSON_OUTPUT_PROMPT;
-
-  const body = {
-    model: settings.modelName,
-    messages: [
-      { role: "system", content: systemInstruction },
-      { role: "user", content: prompt }
-    ],
-    temperature: settings.temperature,
-    // Try to enforce JSON mode if supported by the provider
-    response_format: { type: "json_object" } 
-  };
-
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify(body)
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Provider Error (${response.status}): ${err}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-
-  if (!content) throw new Error("Empty content received from provider");
-
-  try {
-    // Sometimes models wrap JSON in markdown blocks despite instructions
-    const jsonString = content.replace(/```json\n?|\n?```/g, "").trim();
-    return JSON.parse(jsonString) as GenerationResult;
-  } catch (e) {
-    console.error("JSON Parse Error. Raw content:", content);
-    throw new Error("Failed to parse JSON response from AI. Check logs.");
-  }
-}
-
-// Generic Web Service Implementation
-async function callWebService(prompt: string, settings: GenerationSettings): Promise<GenerationResult> {
-  if (!settings.baseUrl) throw new Error("Base URL is required for Web Service provider.");
-  
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-  };
-
-  // Removed Authorization header with user provided API key.
-
-  // Send a structured payload that the custom backend can use to generate the result
-  const body = {
-    prompt: prompt,
-    settings: {
-      temperature: settings.temperature,
-      language: settings.language,
-      includeComments: settings.includeComments,
-      basePackage: settings.basePackage,
-      modelName: settings.modelName // Optional, if the backend supports dynamic model selection
+        if (!response.ok) throw new Error(`Provider Error: ${await response.text()}`);
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content;
+        return JSON.parse(content.replace(/```json\n?|\n?```/g, "").trim());
     }
-  };
 
-  const response = await fetch(settings.baseUrl, {
-    method: 'POST',
-    headers: headers,
-    body: JSON.stringify(body)
-  });
+    if (settings.provider === 'web-service') {
+        if (!currentConfig.baseUrl) throw new Error("Base URL required.");
+        const jsonPrompt = getJsonSchemaPrompt(stage);
+        const response = await fetch(currentConfig.baseUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt: fullPrompt,
+                systemPrompt: systemInstruction + "\n" + jsonPrompt, // 시스템 프롬프트에 JSON 스키마 추가
+                stage, // SEND STAGE TO WEB SERVICE
+                context, // SEND PREVIOUS CONTEXT
+                settings: { ...settings }
+            })
+        });
+        if (!response.ok) throw new Error(`Web Service Error: ${await response.text()}`);
+        return await response.json();
+    }
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Web Service Error (${response.status}): ${err}`);
-  }
-
-  // Expecting the backend to return the GenerationResult directly
-  const data = await response.json();
-  
-  // Basic validation to ensure it matches GenerationResult structure
-  if (!data.clxCode || !data.jsCode) {
-    throw new Error("Invalid response structure from Web Service. Expected GenerationResult JSON.");
-  }
-
-  return data as GenerationResult;
+    throw new Error("Unsupported provider");
 }
 
-// Main Factory Function
-export async function generateExBuilderCode(prompt: string, settings: GenerationSettings): Promise<GenerationResult> {
-  switch (settings.provider) {
-    case 'openai':
-    case 'ollama':
-      return callOpenAICompatible(prompt, settings);
-    case 'web-service':
-      return callWebService(prompt, settings);
-    case 'gemini':
-    default:
-      return callGemini(prompt, settings);
-  }
+// Orchestrator: Runs stages sequentially
+export async function generateExBuilderCode(
+    prompt: string, 
+    settings: GenerationSettings,
+    onProgress?: (stage: GenerationStage, partialResult: Partial<GenerationResult>) => void
+): Promise<GenerationResult> {
+    const stages: GenerationStage[] = ['sql', 'server', 'layout', 'script'];
+    let finalResult: GenerationResult = {
+        logs: ["Starting sequential generation..."],
+        explanation: "",
+        javaFiles: []
+    };
+
+    for (const stage of stages) {
+        finalResult.logs.push(`Generating ${stage.toUpperCase()}...`);
+        const partial = await callProviderForStage(stage, prompt, settings, finalResult);
+        
+        // Merge results: filter out nulls to prevent overwriting existing data
+        const cleanPartial = Object.fromEntries(
+            Object.entries(partial).filter(([_, v]) => v !== null && v !== undefined)
+        );
+
+        // Remove logs from cleanPartial to prevent overwriting during spread
+        const { logs: partialLogs, ...otherPartial } = cleanPartial as any;
+
+        finalResult = {
+            ...finalResult,
+            ...otherPartial,
+            logs: [...finalResult.logs, ...(partialLogs || [])],
+            explanation: partial.explanation || finalResult.explanation
+        };
+
+        if (onProgress) onProgress(stage, finalResult);
+    }
+
+    finalResult.logs.push("Generation Pipeline Complete.");
+    return finalResult;
 }
+

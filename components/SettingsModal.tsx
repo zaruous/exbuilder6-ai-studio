@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, Sliders, Languages, MessageSquare, Package, Server, Globe } from 'lucide-react';
+import { X, Save, Sliders, Languages, MessageSquare, Package, Server, Globe, Database } from 'lucide-react';
 import { GenerationSettings, AIProvider } from '../types';
 
 interface SettingsModalProps {
@@ -19,37 +19,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
   }, [settings, isOpen]);
 
   const handleProviderChange = (provider: AIProvider) => {
-    let defaultModel = '';
-    let defaultUrl = '';
-
-    switch (provider) {
-      case 'gemini':
-        defaultModel = 'gemini-3-pro-preview';
-        break;
-      case 'openai':
-        defaultModel = 'gpt-4o';
-        defaultUrl = 'https://api.openai.com/v1';
-        break;
-      case 'ollama':
-        defaultModel = 'llama3';
-        defaultUrl = 'http://localhost:11434/v1';
-        break;
-      case 'web-service':
-        defaultModel = ''; // Model usually defined on server side for custom web services
-        defaultUrl = 'https://my-backend-api.com/generate';
-        break;
-    }
-
     setLocalSettings({
       ...localSettings,
-      provider,
-      modelName: defaultModel,
-      baseUrl: defaultUrl,
-      // API Key reset logic removed
+      provider
+    });
+  };
+
+  const updateCurrentConfig = (updates: Partial<ProviderConfig>) => {
+    setLocalSettings({
+        ...localSettings,
+        providerConfigs: {
+            ...localSettings.providerConfigs,
+            [localSettings.provider]: {
+                ...localSettings.providerConfigs[localSettings.provider],
+                ...updates
+            }
+        }
     });
   };
 
   if (!isOpen) return null;
+
+  const currentConfig = localSettings.providerConfigs?.[localSettings.provider] || { modelName: '' };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -101,8 +92,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                             </label>
                             <input 
                                 type="text" 
-                                value={localSettings.baseUrl || ''}
-                                onChange={(e) => setLocalSettings({...localSettings, baseUrl: e.target.value})}
+                                value={currentConfig.baseUrl || ''}
+                                onChange={(e) => updateCurrentConfig({ baseUrl: e.target.value })}
                                 placeholder={localSettings.provider === 'ollama' ? "http://localhost:11434/v1" : "https://api.openai.com/v1"}
                                 className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 font-mono focus:border-blue-500 focus:outline-none"
                             />
@@ -114,18 +105,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                         </div>
                     )}
 
-                    {/* Model Name - Hide for Web Service as it's likely handled by the backend */}
-                    {localSettings.provider !== 'web-service' && (
-                      <div className="space-y-1">
-                          <label className="text-[10px] uppercase font-bold text-slate-500">Model Name</label>
-                          <input 
-                              type="text" 
-                              value={localSettings.modelName}
-                              onChange={(e) => setLocalSettings({...localSettings, modelName: e.target.value})}
-                              className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 font-mono focus:border-blue-500 focus:outline-none"
-                          />
-                      </div>
-                    )}
+                    {/* Model Name */}
+                    <div className="space-y-1">
+                        <label className="text-[10px] uppercase font-bold text-slate-500">Model Name</label>
+                        <input 
+                            type="text" 
+                            value={currentConfig.modelName}
+                            onChange={(e) => updateCurrentConfig({ modelName: e.target.value })}
+                            placeholder={localSettings.provider === 'web-service' ? "Model to use on backend" : ""}
+                            className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-xs text-slate-200 font-mono focus:border-blue-500 focus:outline-none"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -182,7 +172,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                     </div>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-800">
+                <div className="space-y-3">
+                    <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                        <Database className="w-4 h-4 text-slate-500" />
+                        Target DBMS (SQL Dialect)
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                        {(['postgre', 'mssql', 'oracle'] as const).map((db) => (
+                            <button 
+                                key={db}
+                                onClick={() => setLocalSettings({...localSettings, dbms: db})}
+                                className={`py-2 px-1 rounded-lg border text-xs font-bold transition-all uppercase ${localSettings.dbms === db ? 'bg-blue-600/20 border-blue-500 text-blue-200' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'}`}
+                            >
+                                {db === 'postgre' ? 'PostgreSQL' : db === 'mssql' ? 'MS SQL' : 'Oracle'}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="flex justify-between items-center p-3 bg-slate-800/50 rounded-lg border border-slate-800">
                     <label className="text-sm font-medium text-slate-300 flex items-center gap-2 cursor-pointer">
                         <MessageSquare className="w-4 h-4 text-slate-500" />
                         Include Detailed Comments

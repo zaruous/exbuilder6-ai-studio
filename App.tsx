@@ -23,10 +23,13 @@ import {
   Server,
   Globe,
   Share2,
-  Search
+  Search,
+  Database
 } from 'lucide-react';
 
 type ViewMode = 'generator' | 'explore';
+
+const SETTINGS_KEY = 'exbuilder_settings';
 
 const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('generator');
@@ -40,14 +43,47 @@ const App: React.FC = () => {
 
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settings, setSettings] = useState<GenerationSettings>({
-    provider: 'gemini',
-    modelName: 'gemini-3-pro-preview',
-    temperature: 0.7,
-    language: 'ko',
-    includeComments: true,
-    basePackage: 'com.example'
+  const [settings, setSettings] = useState<GenerationSettings>(() => {
+    const defaultSettings: GenerationSettings = {
+        provider: 'gemini',
+        providerConfigs: {
+            gemini: { modelName: 'gemini-3-pro-preview' },
+            openai: { modelName: 'gpt-4o', baseUrl: 'https://api.openai.com/v1' },
+            ollama: { modelName: 'glm-4.7:cloud', baseUrl: 'http://localhost:11434/v1' },
+            'web-service': { modelName: 'glm-4.7:cloud', baseUrl: 'http://localhost:8080/api/generate' }
+        },
+        temperature: 0.3,
+        language: 'ko',
+        includeComments: true,
+        basePackage: 'com.example',
+        dbms: 'oracle'
+    };
+
+    const saved = localStorage.getItem(SETTINGS_KEY);
+    if (saved) {
+        try {
+            const parsed = JSON.parse(saved);
+            // Merge saved with defaults to handle version differences
+            return {
+                ...defaultSettings,
+                ...parsed,
+                // Deep merge providerConfigs specifically
+                providerConfigs: {
+                    ...defaultSettings.providerConfigs,
+                    ...(parsed.providerConfigs || {})
+                }
+            };
+        } catch (e) {
+            console.error("Failed to parse settings", e);
+        }
+    }
+    return defaultSettings;
   });
+
+  // Save settings whenever they change
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  }, [settings]);
 
   // Community State
   const [sharedItems, setSharedItems] = useState<SharedComponent[]>([]);
@@ -68,10 +104,27 @@ const App: React.FC = () => {
     
     setLoading(true);
     setError(null);
+    setResult(null); // Clear previous
+    setActiveTab(TabType.SQL); // Start with SQL tab
+
     try {
-      const data = await generateExBuilderCode(prompt, settings);
+      const data = await generateExBuilderCode(prompt, settings, (stage, partial) => {
+        // Real-time progress update
+        setResult(prev => ({
+            ...partial,
+            logs: partial.logs || [],
+            explanation: partial.explanation || "",
+            javaFiles: partial.javaFiles || []
+        } as GenerationResult));
+
+        // Auto-switch tabs as we progress
+        if (stage === 'sql') setActiveTab(TabType.SQL);
+        if (stage === 'server') setActiveTab(TabType.SERVER);
+        if (stage === 'layout') setActiveTab(TabType.CLX);
+        if (stage === 'script') setActiveTab(TabType.JS);
+      });
+      
       setResult(data);
-      setActiveTab(TabType.CLX);
     } catch (err: any) {
       setError(`Generation failed: ${err.message || 'Unknown error'}`);
       console.error(err);
@@ -254,6 +307,12 @@ const App: React.FC = () => {
                     label="Script"
                 />
                 <TabButton 
+                    active={activeTab === TabType.SQL} 
+                    onClick={() => setActiveTab(TabType.SQL)}
+                    icon={<Database className="w-4 h-4" />}
+                    label="SQL"
+                />
+                <TabButton 
                     active={activeTab === TabType.SERVER} 
                     onClick={() => setActiveTab(TabType.SERVER)}
                     icon={<Server className="w-4 h-4" />}
@@ -325,10 +384,13 @@ const App: React.FC = () => {
                 {result && (
                 <div className="h-full flex flex-col gap-4">
                     {activeTab === TabType.CLX && (
-                    <CodeBlock title="eXbuilder6 Layout (XML)" language="xml" code={result.clxCode} />
+                    <CodeBlock title="eXbuilder6 Layout (XML)" language="xml" code={result.clxCode || ''} />
                     )}
                     {activeTab === TabType.JS && (
-                    <CodeBlock title="eXbuilder6 Controller (JavaScript)" language="javascript" code={result.jsCode} />
+                    <CodeBlock title="eXbuilder6 Controller (JavaScript)" language="javascript" code={result.jsCode || ''} />
+                    )}
+                    {activeTab === TabType.SQL && (
+                    <CodeBlock title="Database Script (SQL)" language="sql" code={result.sqlCode || '-- No SQL generated'} />
                     )}
                     {activeTab === TabType.SERVER && (
                     <ServerCodeViewer files={result.javaFiles || []} />

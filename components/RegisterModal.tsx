@@ -22,6 +22,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose, onConfir
   // Manual Upload State
   const [manualClx, setManualClx] = useState('');
   const [manualJs, setManualJs] = useState('');
+  const [manualSql, setManualSql] = useState('');
   const [manualJavaFiles, setManualJavaFiles] = useState<JavaFile[]>([]);
   
   // Temp Java File State
@@ -76,6 +77,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose, onConfir
             manualResult = {
                 clxCode: manualClx,
                 jsCode: manualJs,
+                sqlCode: manualSql,
                 javaFiles: manualJavaFiles,
                 logs: ['Manual upload'],
                 explanation: 'User uploaded component',
@@ -91,6 +93,7 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose, onConfir
         setAuthor('');
         setManualClx('');
         setManualJs('');
+        setManualSql('');
         setManualJavaFiles([]);
     }
   };
@@ -194,6 +197,18 @@ const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose, onConfir
                             value={manualJs}
                             onChange={(e) => setManualJs(e.target.value)}
                             placeholder="Paste .js content here..."
+                            className="w-full h-32 bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-blue-500"
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-xs font-semibold uppercase text-blue-500 flex items-center gap-2">
+                            <Code className="w-3 h-3" /> Database Script (SQL)
+                        </label>
+                        <textarea 
+                            value={manualSql}
+                            onChange={(e) => setManualSql(e.target.value)}
+                            placeholder="Paste SQL script here..."
                             className="w-full h-32 bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-slate-300 focus:outline-none focus:border-blue-500"
                         />
                     </div>

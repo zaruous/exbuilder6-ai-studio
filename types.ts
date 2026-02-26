@@ -7,17 +7,21 @@ export interface JavaFile {
 }
 
 export interface GenerationResult {
-  clxCode: string;
-  jsCode: string;
-  javaFiles: JavaFile[];
+  clxCode?: string;
+  jsCode?: string;
+  sqlCode?: string;
+  javaFiles?: JavaFile[];
   logs: string[];
   explanation: string;
   previewMock?: string;
 }
 
+export type GenerationStage = 'sql' | 'server' | 'layout' | 'script';
+
 export enum TabType {
   CLX = 'CLX',
   JS = 'JS',
+  SQL = 'SQL',
   SERVER = 'SERVER',
   LOGS = 'LOGS',
   PREVIEW = 'PREVIEW'
@@ -31,17 +35,22 @@ export interface LogEntry {
 
 export type AIProvider = 'gemini' | 'openai' | 'ollama' | 'web-service';
 
+export interface ProviderConfig {
+  modelName: string;
+  baseUrl?: string;
+}
+
 export interface GenerationSettings {
   // AI Config
   provider: AIProvider;
-  baseUrl?: string; // For OpenAI/Ollama/WebService
-  modelName: string; // e.g., gemini-3-pro-preview, gpt-4o, llama3
+  providerConfigs: Record<AIProvider, ProviderConfig>;
   
   // Generation Params
   temperature: number;
   language: 'ko' | 'en';
   includeComments: boolean;
   basePackage: string;
+  dbms: 'postgre' | 'mssql' | 'oracle';
 }
 
 // Community Features

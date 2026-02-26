@@ -4,7 +4,7 @@ import Editor from '@monaco-editor/react';
 
 interface CodeBlockProps {
   code: string;
-  language: 'xml' | 'javascript';
+  language: 'xml' | 'javascript' | 'sql';
   title: string;
 }
 
