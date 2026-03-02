@@ -30,7 +30,7 @@ const getStagePrompt = (stage: GenerationStage, userPrompt: string, context?: Pa
 };
 
 // Common System Instructions for all providers
-const getSystemInstruction = (settings: GenerationSettings) => {
+const getSystemInstruction = (stage: GenerationStage, settings: GenerationSettings) => {
   const langInstruction = settings.language === 'ko' 
     ? "모든 설명과 주석은 한국어로 작성하세요." 
     : "All explanations and comments must be in English.";
@@ -39,17 +39,29 @@ const getSystemInstruction = (settings: GenerationSettings) => {
     ? "Include detailed JSDoc/JavaDoc comments for all functions and XML comments for complex layout structures." 
     : "Keep comments minimal and focused on complex logic only.";
 
+  
   const basePackage = settings.basePackage || "com.example";
+  let systemRulePrompt = "You are an expert eXbuilder6 UI and Spring Boot Java developer. ";
+  let stagePrompts = "";
 
-  return `You are an expert eXbuilder6 UI and Spring Boot Java developer. 
+  switch (stage) {
+    case 'sql':
+      systemRulePrompt = "You are an expert database architect and SQL developer. ";
+      stagePrompts =  `테이블 목록이 매우 크므로 절대 get_table_list를 먼저 호출하지 마십시오. 대신 search_tables 도구를 사용하여 필요한 키워드로 테이블을 검색한 후, 찾은 테이블에 대해 get_table_schema를 호출하여 구조를 파악하십시오.`;
+        break;
+    case 'server':
+      stagePrompts = `  Java Package Rules:
+                    - Base Package: ${basePackage}
+                    - Controller: ${basePackage}.resource.complex.[serviceName].controller
+                    - Model: ${basePackage}.resource.complex.[serviceName].[serviceName].model
+                    - Service: ${basePackage}.resource.complex.[serviceName].service`;
+      break;
+  }
+
+  return `${systemRulePrompt}
   ${langInstruction}
   ${commentInstruction}
-  
-  Java Package Rules:
-  - Base Package: ${basePackage}
-  - Controller: ${basePackage}.resource.complex.[serviceName].controller
-  - Model: ${basePackage}.resource.complex.[serviceName].[serviceName].model
-  - Service: ${basePackage}.resource.complex.[serviceName].service
+  ${stagePrompts}
   
   Always generate valid, compilable code. Return results in strictly valid JSON.`;
 };
@@ -76,7 +88,7 @@ async function callProviderForStage(
     context?: Partial<GenerationResult>
 ): Promise<Partial<GenerationResult>> {
     const fullPrompt = getStagePrompt(stage, prompt, context);
-    const systemInstruction = getSystemInstruction(settings);
+    const systemInstruction = getSystemInstruction(stage, settings);
     const currentConfig = settings.providerConfigs[settings.provider];
 
     if (settings.provider === 'gemini') {
