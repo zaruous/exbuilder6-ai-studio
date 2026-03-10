@@ -5,6 +5,10 @@ import { GenerationResult, GenerationSettings, GenerationStage } from "../types"
 // Helper to get stage-specific instructions
 const getStagePrompt = (stage: GenerationStage, userPrompt: string, context?: Partial<GenerationResult>) => {
   switch (stage) {
+    case 'design':
+      return `[TASK: DESIGN DOCUMENT GENERATION] 
+      Create a detailed screen design document (화면 설계서) in Markdown format for: ${userPrompt}. 
+      Include sections like Overview, UI Components, Layout Table, and Data Flow.`;
     case 'sql':
       return `[TASK: SQL GENERATION] 
       Create database tables for: ${userPrompt}. 
@@ -45,6 +49,10 @@ const getSystemInstruction = (stage: GenerationStage, settings: GenerationSettin
   let stagePrompts = "";
 
   switch (stage) {
+    case 'design':
+      systemRulePrompt = "You are an expert UI/UX Designer and Technical Writer. ";
+      stagePrompts = "Generate a professional screen design document in Markdown. Use Marp-compatible syntax if appropriate (using --- for slide breaks).";
+      break;
     case 'sql':
       systemRulePrompt = "You are an expert database architect and SQL developer. ";
       stagePrompts =  `테이블 목록이 매우 크므로 절대 get_table_list를 먼저 호출하지 마십시오. 대신 search_tables 도구를 사용하여 필요한 키워드로 테이블을 검색한 후, 찾은 테이블에 대해 get_table_schema를 호출하여 구조를 파악하십시오.`;
@@ -73,6 +81,7 @@ const getJsonSchemaPrompt = (stage: GenerationStage) => {
     "explanation": string`;
 
   switch (stage) {
+    case 'design': return `${baseSchema}, "designDoc": string (Markdown content)`;
     case 'sql': return `${baseSchema}, "sqlCode": string`;
     case 'server': return `${baseSchema}, "javaFiles": Array<{fileName:string, packagePath:string, content:string, type:"controller"|"service"|"model"}>`;
     case 'layout': return `${baseSchema}, "clxCode": string, "previewMock": string (HTML mockup)`;
@@ -100,6 +109,7 @@ async function callProviderForStage(
             explanation: { type: Type.STRING }
         };
 
+        if (stage === 'design') properties.designDoc = { type: Type.STRING };
         if (stage === 'sql') properties.sqlCode = { type: Type.STRING };
         if (stage === 'server') {
             properties.javaFiles = {
@@ -173,6 +183,14 @@ async function callProviderForStage(
         if (!response.ok) throw new Error(`Provider Error: ${await response.text()}`);
         const data = await response.json();
         const content = data.choices?.[0]?.message?.content;
+        if( stage === 'design' && typeof content === 'string' ) {
+            // 앞뒤에 붙은 코드 블록 기호만 정교하게 제거
+            const start = content.indexOf('{');
+            const end = content.lastIndexOf('}');
+            if (start !== -1 && end !== -1) {
+                return JSON.parse(content.substring(start, end + 1));
+            }
+        }
         return JSON.parse(content.replace(/```json\n?|\n?```/g, "").trim());
     }
 
@@ -204,7 +222,7 @@ export async function generateExBuilderCode(
     onProgress?: (stage: GenerationStage, partialResult: Partial<GenerationResult>) => void,
     selectedStages?: GenerationStage[]
 ): Promise<GenerationResult> {
-    const allStages: GenerationStage[] = ['sql', 'server', 'layout', 'script'];
+    const allStages: GenerationStage[] = ['sql', 'design' ,'server', 'layout', 'script'];
     
     // 사용자가 선택한 단계가 있더라도, allStages의 순서를 기준으로 필터링하여 실행 순서를 보장합니다.
     const stagesToRun = selectedStages && selectedStages.length > 0 

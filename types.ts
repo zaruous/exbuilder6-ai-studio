@@ -11,12 +11,13 @@ export interface GenerationResult {
   jsCode?: string;
   sqlCode?: string;
   javaFiles?: JavaFile[];
+  designDoc?: string;
   logs: string[];
   explanation: string;
   previewMock?: string;
 }
 
-export type GenerationStage = 'sql' | 'server' | 'layout' | 'script';
+export type GenerationStage = 'sql' | 'server' | 'layout' | 'script' | 'design';
 
 export enum TabType {
   CLX = 'CLX',
@@ -24,7 +25,8 @@ export enum TabType {
   SQL = 'SQL',
   SERVER = 'SERVER',
   LOGS = 'LOGS',
-  PREVIEW = 'PREVIEW'
+  PREVIEW = 'PREVIEW',
+  DESIGN_DOC = 'DESIGN_DOC'
 }
 
 export interface LogEntry {

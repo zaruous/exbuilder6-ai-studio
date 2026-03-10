@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Save, Sliders, Languages, MessageSquare, Package, Server, Globe, Database } from 'lucide-react';
-import { GenerationSettings, AIProvider } from '../types';
+import { GenerationSettings, AIProvider, ProviderConfig } from '../types';
 
 interface SettingsModalProps {
   isOpen: boolean;

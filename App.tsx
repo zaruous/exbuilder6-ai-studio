@@ -2,13 +2,14 @@
 import React, { useState, useEffect } from 'react';
 import { generateExBuilderCode } from './services/geminiService';
 import { getSharedComponents, registerComponent } from './services/communityService';
-import { GenerationResult, TabType, GenerationSettings, SharedComponent } from './types';
+import { GenerationResult, TabType, GenerationSettings, SharedComponent, GenerationStage } from './types';
 import CodeBlock from './components/CodeBlock';
 import LogViewer from './components/LogViewer';
 import SettingsModal from './components/SettingsModal';
 import RegisterModal from './components/RegisterModal';
 import ExploreView from './components/ExploreView';
 import ServerCodeViewer from './components/ServerCodeViewer';
+import DesignDocEditor from './components/DesignDocEditor';
 import { 
   Code2, 
   Terminal, 
@@ -26,7 +27,8 @@ import {
   Search,
   Database,
   ChevronDown,
-  Check
+  Check,
+  FileText
 } from 'lucide-react';
 
 type ViewMode = 'generator' | 'explore';
@@ -34,6 +36,7 @@ type ViewMode = 'generator' | 'explore';
 const SETTINGS_KEY = 'exbuilder_settings';
 
 const STAGE_OPTIONS: { value: GenerationStage; label: string; icon: any }[] = [
+  { value: 'design', label: 'Design', icon: FileText },
   { value: 'sql', label: 'SQL', icon: Database },
   { value: 'server', label: 'Server', icon: Server },
   { value: 'layout', label: 'Layout', icon: Layout },
@@ -60,8 +63,8 @@ const App: React.FC = () => {
         providerConfigs: {
             gemini: { modelName: 'gemini-3-pro-preview' },
             openai: { modelName: 'gpt-4o', baseUrl: 'https://api.openai.com/v1' },
-            ollama: { modelName: 'glm-4.7:cloud', baseUrl: 'http://localhost:11434/v1' },
-            'web-service': { modelName: 'glm-4.7:cloud', baseUrl: 'http://localhost:8080/api/generate' }
+            ollama: { modelName: 'glm-5:cloud', baseUrl: 'http://localhost:11434/v1' },
+            'web-service': { modelName: 'glm-5:cloud', baseUrl: 'http://localhost:8080/api/generate' }
         },
         temperature: 0.3,
         language: 'ko',
@@ -129,12 +132,13 @@ const App: React.FC = () => {
     // Determine initial tab based on selection
     if (selectedStages.length > 0) {
         const first = selectedStages[0];
-        if (first === 'sql') setActiveTab(TabType.SQL);
+        if (first === 'design') setActiveTab(TabType.DESIGN_DOC);
+        else if (first === 'sql') setActiveTab(TabType.SQL);
         else if (first === 'server') setActiveTab(TabType.SERVER);
         else if (first === 'layout') setActiveTab(TabType.CLX);
         else if (first === 'script') setActiveTab(TabType.JS);
     } else {
-        setActiveTab(TabType.SQL); // Default
+        setActiveTab(TabType.DESIGN_DOC); // Default to Design if generating all
     }
 
     try {
@@ -148,6 +152,7 @@ const App: React.FC = () => {
         } as GenerationResult));
 
         // Auto-switch tabs as we progress
+        if (stage === 'design') setActiveTab(TabType.DESIGN_DOC);
         if (stage === 'sql') setActiveTab(TabType.SQL);
         if (stage === 'server') setActiveTab(TabType.SERVER);
         if (stage === 'layout') setActiveTab(TabType.CLX);
@@ -190,6 +195,66 @@ const App: React.FC = () => {
     setPrompt(`Loaded from: ${item.title}`); // Update prompt just for visual context
     setViewMode('generator');
     setActiveTab(TabType.PREVIEW);
+  };
+
+  // --- Dynamic Synthesis Helpers ---
+  const getSynthesizedDesignDoc = () => {
+    if (result?.designDoc) return result.designDoc;
+    
+    // Default template if result is not yet available or missing designDoc
+    const baseContent = `
+# Technical Design: ${prompt || 'New Component'}
+
+---
+
+## 1. Requirement Analysis
+${result?.explanation || 'Awaiting requirement analysis... Use the prompt to start.'}
+
+---
+
+## 2. System Architecture
+- **DBMS**: ${settings.dbms.toUpperCase()}
+- **Backend**: Spring Boot 3.x
+- **Frontend**: eXbuilder6 Standard
+- **Package**: \`${settings.basePackage}\`
+
+---
+
+## 3. Data Model (SQL)
+\`\`\`sql
+${result?.sqlCode || '-- SQL schema will appear here.'}
+\`\`\`
+
+---
+
+## 4. Server Components (Java)
+${result?.javaFiles?.map(f => `- **${f.fileName}** (${f.type.toUpperCase()})`).join('\n') || '- Java components will appear here.'}
+
+---
+
+## 5. UI Component Logic
+- **Layout**: Dynamic eXbuilder6 XML (.clx)
+- **Script**: Reactive Controller JS (.js)
+- **Status**: ${result?.clxCode ? '✅ Layout Ready' : '⏳ Architecting...'}
+    `;
+    return baseContent;
+  };
+
+  const getSynthesizedSql = () => {
+    if (result?.sqlCode) return result.sqlCode;
+    if (!result) return '';
+    
+    return `-- [SCHEMA SPECIFICATION]
+-- Target: ${prompt}
+-- Dialect: ${settings.dbms.toUpperCase()}
+
+-- The AI is using the following strategy for data mapping:
+-- ${result.explanation.split('.')[0]}.
+
+/* 
+  Full DDL script is omitted as 'SQL' stage was not selected.
+  Please select 'SQL' in the target menu for a complete script.
+*/`;
   };
 
   return (
@@ -401,6 +466,12 @@ const App: React.FC = () => {
                     label="Server"
                 />
                 <TabButton 
+                    active={activeTab === TabType.DESIGN_DOC} 
+                    onClick={() => setActiveTab(TabType.DESIGN_DOC)}
+                    icon={<FileText className="w-4 h-4" />}
+                    label="Design"
+                />
+                <TabButton 
                     active={activeTab === TabType.LOGS} 
                     onClick={() => setActiveTab(TabType.LOGS)}
                     icon={<Terminal className="w-4 h-4" />}
@@ -433,7 +504,16 @@ const App: React.FC = () => {
 
             {/* Content Area */}
             <div className="flex-1 overflow-hidden relative">
-                {!result && !loading && (
+                {activeTab === TabType.DESIGN_DOC && (
+                    <div className="h-full flex flex-col">
+                        <DesignDocEditor 
+                          initialContent={getSynthesizedDesignDoc()} 
+                          onSave={(content) => setResult(prev => prev ? {...prev, designDoc: content} : { logs: [], explanation: 'Manual update', designDoc: content })} 
+                        />
+                    </div>
+                )}
+
+                {!result && !loading && activeTab !== TabType.DESIGN_DOC && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 gap-4">
                     <div className="w-16 h-16 rounded-full border-2 border-dashed border-slate-800 flex items-center justify-center">
                     <Cpu className="w-8 h-8 opacity-20" />
@@ -472,11 +552,12 @@ const App: React.FC = () => {
                     <CodeBlock title="eXbuilder6 Controller (JavaScript)" language="javascript" code={result.jsCode || ''} />
                     )}
                     {activeTab === TabType.SQL && (
-                    <CodeBlock title="Database Script (SQL)" language="sql" code={result.sqlCode || '-- No SQL generated'} />
+                    <CodeBlock title="Database Script (SQL)" language="sql" code={getSynthesizedSql()} />
                     )}
                     {activeTab === TabType.SERVER && (
                     <ServerCodeViewer files={result.javaFiles || []} />
                     )}
+                    {/* DESIGN_DOC is handled outside this block to support empty state */}
                     {activeTab === TabType.LOGS && (
                     <LogViewer logs={result.logs} />
                     )}
