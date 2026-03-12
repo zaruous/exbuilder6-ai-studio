@@ -8,7 +8,7 @@ const getStagePrompt = (stage: GenerationStage, userPrompt: string, context?: Pa
     case 'design':
       return `[TASK: DESIGN DOCUMENT GENERATION] 
       Create a detailed screen design document (화면 설계서) in Markdown format for: ${userPrompt}. 
-      Include sections like Overview, UI Components, Layout Table, and Data Flow.`;
+      `;
     case 'sql':
       return `[TASK: SQL GENERATION] 
       Create database tables for: ${userPrompt}. 
@@ -39,7 +39,7 @@ const getSystemInstruction = (stage: GenerationStage, settings: GenerationSettin
     ? "모든 설명과 주석은 한국어로 작성하세요." 
     : "All explanations and comments must be in English.";
     
-  const commentInstruction = settings.includeComments 
+  let commentInstruction = settings.includeComments 
     ? "Include detailed JSDoc/JavaDoc comments for all functions and XML comments for complex layout structures." 
     : "Keep comments minimal and focused on complex logic only.";
 
@@ -51,7 +51,21 @@ const getSystemInstruction = (stage: GenerationStage, settings: GenerationSettin
   switch (stage) {
     case 'design':
       systemRulePrompt = "You are an expert UI/UX Designer and Technical Writer. ";
-      stagePrompts = "Generate a professional screen design document in Markdown. Use Marp-compatible syntax if appropriate (using --- for slide breaks).";
+      stagePrompts = `
+      Generate a professional screen design document in Markdown. Use Marp-compatible syntax if appropriate (using --- for slide breaks).
+        #1. 화면명
+        #2. 화면 내용 요약
+        #3. 화면 이미지(아스키아트)
+          - 필터 영역과 본문 영역 분리하고 필터영역에 검색, 초기화, 조회등 메인 버튼 위치등 필요한 버튼들을 배치 
+          - 필요시 저장, 삭제, 추가등의 버튼은 본문 영역 상단에 배치
+        #4. 버튼 설명
+         |버튼명|기능설명|
+        #5. 서비스 처리 (테이블)
+         |서비스주소|메소드|기능설명|참조 테이블|SQL|
+        #6. 기타 특이사항
+         - 팝업의 경우 화면 상단에 팝업명을 표기하고, 화면 하단 우측에 표기.
+      `;
+      commentInstruction = "";
       break;
     case 'sql':
       systemRulePrompt = "You are an expert database architect and SQL developer. ";

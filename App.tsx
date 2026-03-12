@@ -203,40 +203,67 @@ const App: React.FC = () => {
     
     // Default template if result is not yet available or missing designDoc
     const baseContent = `
-# Technical Design: ${prompt || 'New Component'}
+# [기준정보] 공정 설정 화면 설계서
+
+## 1. 화면명
+**공정 설정 (Process Configuration)**
 
 ---
 
-## 1. Requirement Analysis
-${result?.explanation || 'Awaiting requirement analysis... Use the prompt to start.'}
+## 2. 화면 내용 요약
+생산 현장의 작업 단계(공정)에 대한 기준 정보를 정의하고 관리하는 화면입니다.
+
+공정별 물류 속성(창고 여부), 시스템 제어 속성(가상 공정, PULL 방식),
+외부 시스템 연동(ERP) 설정을 통해 생산 프로세스의 뼈대를 구축합니다.
 
 ---
 
-## 2. System Architecture
-- **DBMS**: ${settings.dbms.toUpperCase()}
-- **Backend**: Spring Boot 3.x
-- **Frontend**: eXbuilder6 Standard
-- **Package**: \`${settings.basePackage}\`
+## 3. 화면 이미지 (아스키아트)
+
+    /----------------------------------------------------------------------------\\
+    | [ ] 공정 설정                                 전체 메뉴 > 기준정보 > 생산기준정보 > 공정 설정 |
+    +----------------------------------------------------------------------------+
+    |  공정코드 [__________]  공정명 [__________]  공정유형 [ 선택 v ]               |
+    |  공정구분 (●) 생산 공정  (○) 창고 관리                      [ 초기화 ] [ 조회 ] |
+    +----------------------------------------------------------------------------+
+    |                                                                            |
+    | 공정 목록                                                                  |
+    | [ 전체 5 ] | [20개씩 보기 v]           [ 엑셀 업로드 ] [ 엑셀 ] [ 삭제 ] [ 신규 ] |
+    +----+----+----+----------+----------+----+----+----+----+----+----+----------+
+    | □ | No |상세| 공정코드 | 공정명   |단위|창고|가상|시작|PULL|ERP |ERP공정코드|
+    +----+----+----+----------+----------+----+----+----+----+----+----+----------+
+    | □ | 1  | 🔍 | 001      | 투입     | 개 | [ ]| [ ]| [ ]| [ ]| [ ]|          |
+    | □ | 2  | 🔍 | 002      | 반응     | 개 | [ ]| [ ]| [ ]| [ ]| [ ]|          |
+    | □ | 3  | 🔍 | 003      | 이송     | 개 | [ ]| [ ]| [ ]| [ ]| [ ]|          |
+    | □ | 4  | 🔍 | 004      | 포장     | 개 | [ ]| [ ]| [ ]| [ ]| [ ]|          |
+    | □ | 5  | 🔍 | TEST_OP  | 테스트   | KG | [ ]| [ ]| [ ]| [ ]| [ ]|          |
+    +----+----+----+----------+----------+----+----+----+----+----+----+----------+
 
 ---
 
-## 3. Data Model (SQL)
-\`\`\`sql
-${result?.sqlCode || '-- SQL schema will appear here.'}
-\`\`\`
+## 4. 버튼 설명
+
+| 버튼명     | 기능 설명                                 | 주요 로직                                             |
+|------------|--------------------------------------------|--------------------------------------------------------|
+| 조회       | 입력된 조건으로 공정 목록을 검색           | 공정코드/명칭 Like 검색, 구분/유형 일치 검색            |
+| 초기화     | 검색 조건 필드를 기본값으로 리셋          | processCode, processName 빈값 처리 등                 |
+| 엑셀 업로드 | 엑셀 파일을 통해 공정 정보 일괄 등록      | 양식 검증 및 saveProcess 대량 실행                    |
+| 엑셀       | 그리드 데이터를 엑셀 파일로 다운로드       | -                                                      |
+| 삭제       | 체크된 항목의 공정 정보 삭제              | 사용 중인 공정(BOM, 실적 등) 여부 체크 후 삭제        |
+| 신규       | 신규 공정 정보 입력을 위한 팝업 오픈      | 상세 보기와 동일한 팝업 활용                          |
 
 ---
 
-## 4. Server Components (Java)
-${result?.javaFiles?.map(f => `- **${f.fileName}** (${f.type.toUpperCase()})`).join('\n') || '- Java components will appear here.'}
+## 5. 서비스 처리 (테이블)
 
----
+| 서비스주소                                                | 메소드 | 기능설명                    | 참조 테이블·SQL (예시)                                                                                       |
+|--------------------------------------------|--------|-----------------------------|---------------------------------------------------------------------------------------------------------------|
+| /api/basis/proc/listProcessService         | GET    | 공정 목록 조회              | SELECT * FROM TB_PROC_MST WHERE PROC_CD LIKE :procCd AND PROC_NM LIKE :procNm                                  |
+| /api/basis/proc/saveProcessService         | POST   | 공정 정보 저장/수정         | MERGE INTO TB_PROC_MST ... WHEN MATCHED THEN UPDATE ... WHEN NOT MATCHED THEN INSERT ...                        |
+| /api/basis/proc/removeProcessService       | DELETE | 선택 공정 삭제              | DELETE FROM TB_PROC_MST WHERE PROC_CD = :procCd                                                                 |
+| /api/basis/proc/uploadProcessService       | POST   | 엑셀 데이터 파싱 저장       | (Loop) INSERT INTO TB_PROC_MST (...) VALUES (...)                                                               |
 
-## 5. UI Component Logic
-- **Layout**: Dynamic eXbuilder6 XML (.clx)
-- **Script**: Reactive Controller JS (.js)
-- **Status**: ${result?.clxCode ? '✅ Layout Ready' : '⏳ Architecting...'}
-    `;
+`;
     return baseContent;
   };
 

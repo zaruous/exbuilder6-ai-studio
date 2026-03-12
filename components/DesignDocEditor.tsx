@@ -128,7 +128,31 @@ const SlideCard: React.FC<{ slide: ParsedSlide; total: number }> = ({ slide, tot
 // Main editor
 // ──────────────────────────────────────────────
 const DesignDocEditor: React.FC<DesignDocEditorProps> = ({
-  initialContent = '# 화면 설계서\n\n## 개요\n이 화면은 ... 을 위한 화면입니다.\n\n## 주요 기능\n- 기능 1\n- 기능 2\n\n---\n\n## 화면 레이아웃\n| 영역 | 설명 |\n| --- | --- |\n| 헤더 | 시스템 로고 및 사용자 정보 |\n| 사이드바 | 메뉴 네비게이션 |\n| 메인 | 데이터 그리드 및 상세 정보 |\n\n---\n\n## 기능 상세\n- 상세 기능 A\n- 상세 기능 B\n- 상세 기능 C',
+  initialContent = `
+    # 화면 설계서
+    
+    ## 개요
+    이 화면은 ... 을 위한 화면입니다.
+    
+    ## 주요 기능
+    - 기능 1
+    - 기능 2
+    
+    ---
+
+    ## 화면 레이아웃
+    | 영역 | 설명 |
+    | --- | --- |
+    | 헤더 | 시스템 로고 및 사용자 정보 |
+    | 사이드바 | 메뉴 네비게이션 |
+    | 메인 | 데이터 그리드 및 상세 정보 |
+
+    ---
+    
+    ## 기능 상세
+    - 상세 기능 A
+    - 상세 기능 B
+    - 상세 기능 C'`,
   onSave,
 }) => {
   const [content, setContent]               = useState(initialContent || '');
