@@ -12,8 +12,10 @@
     "@marp-team/marp-core": "^4.3.0",
     "@monaco-editor/react": "^4.6.0",
     "html-docx-js-typescript": "^0.1.5",
-    "html2pdf.js": "^0.14.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.0",
     "lucide-react": "^0.563.0",
+    "marked": "^17.0.4",
     "pptxgenjs": "^4.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -21,6 +23,7 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@types/marked": "^5.0.2",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

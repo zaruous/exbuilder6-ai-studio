@@ -2,19 +2,21 @@ import React, { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { 
+import {
   FileText, Presentation, Download, Maximize2, X, FileCode, FileDown, Layout,
-  Split, Eye, Edit3, ChevronLeft, ChevronRight
+  Split, Eye, Edit3, Loader2
 } from 'lucide-react';
-import html2pdf from 'html2pdf.js';
-// @ts-ignore
-import { asBlob } from 'html-docx-js-typescript';
-import pptxgen from "pptxgenjs";
+import { Marp } from '@marp-team/marp-core';
+import {
+  doStandardExportHTML, doStandardExportPDF, doStandardExportDOCX,
+  doMarpExportHTML, doMarpExportPDF, doMarpExportDOCX, doMarpExportPPTX,
+  doStandardExportMarkdown
+} from './exportUtils';
 
 // ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
-interface ParsedSlide { content: string; index: number; }
+interface ParsedSlide { content: string; index: number; html?: string; }
 type ViewType = 'standard' | 'marp';
 type LayoutType = 'split' | 'edit' | 'preview';
 
@@ -23,10 +25,11 @@ interface DesignDocEditorProps {
   onSave?: (content: string) => void;
 }
 
+const marpInstance = new Marp({ html: true, inlineSVG: false });
+
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
-/** '---' 기준으로 슬라이드 분리 (앞뒤 공백 무시) */
 const parseSlides = (markdown: string): ParsedSlide[] =>
   markdown
     .split(/\n\s*---\s*\n/)
@@ -39,17 +42,30 @@ const parseSlides = (markdown: string): ParsedSlide[] =>
 interface ExportModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (type: 'html' | 'pdf' | 'docx' | 'pptx') => void;
+  onExport: (type: 'html' | 'pdf' | 'docx' | 'pptx' | 'md') => void;
+  exporting: boolean;
+  viewType: ViewType;
 }
 
-const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport }) => {
+const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport, exporting, viewType }) => {
   if (!isOpen) return null;
-  const formats = [
-    { id: 'html'  as const, label: 'HTML',              icon: FileCode,    color: 'text-blue-400',   desc: 'Web standard format' },
-    { id: 'pdf'   as const, label: 'PDF Document',      icon: FileDown,    color: 'text-red-400',    desc: 'Professional printable document' },
-    { id: 'docx'  as const, label: 'Word (DOCX)',       icon: FileText,    color: 'text-blue-500',   desc: 'Editable Microsoft Word document' },
-    { id: 'pptx'  as const, label: 'PowerPoint (PPTX)',icon: Presentation,color: 'text-orange-500', desc: 'Microsoft PowerPoint presentation' },
+
+  const marpFormats = [
+    { id: 'html'  as const, label: 'HTML (슬라이드)',       icon: FileCode,     color: 'text-blue-400',   desc: '슬라이드 형태의 웹 파일' },
+    { id: 'pdf'   as const, label: 'PDF (슬라이드)',        icon: FileDown,     color: 'text-red-400',    desc: '슬라이드별 캡처한 고품질 PDF' },
+    { id: 'docx'  as const, label: 'Word (DOCX)',          icon: FileText,     color: 'text-blue-500',   desc: '슬라이드 기반 Word 문서' },
+    { id: 'pptx'  as const, label: 'PowerPoint (PPTX)',    icon: Presentation, color: 'text-orange-500', desc: '슬라이드별 캡처한 프레젠테이션' },
+    { id: 'md'    as const, label: 'Markdown',             icon: FileCode,     color: 'text-gray-400',   desc: '원본 Markdown 파일' },
   ];
+
+  const standardFormats = [
+    { id: 'html'  as const, label: 'HTML',                 icon: FileCode,     color: 'text-blue-400',   desc: '웹 브라우저에서 바로 볼 수 있는 문서' },
+    { id: 'pdf'   as const, label: 'PDF Document',         icon: FileDown,     color: 'text-red-400',    desc: 'A4 세로 문서형 고품질 PDF' },
+    { id: 'docx'  as const, label: 'Word (DOCX)',          icon: FileText,     color: 'text-blue-500',   desc: 'Microsoft Word 문서' },
+    { id: 'md'    as const, label: 'Markdown',             icon: FileCode,     color: 'text-gray-400',   desc: '원본 Markdown 파일' },
+  ];
+
+  const formats = viewType === 'marp' ? marpFormats : standardFormats;
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
@@ -57,23 +73,35 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport }) 
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <Download className="w-5 h-5 text-blue-500" /> Export Document
           </h3>
-          <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-white transition-colors">
-            <X className="w-5 h-5" />
-          </button>
+          {!exporting && (
+            <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-white transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
         <div className="p-6 grid grid-cols-1 gap-3">
-          {formats.map(f => (
-            <button key={f.id} onClick={() => { onExport(f.id); onClose(); }}
-              className="flex items-center gap-4 p-4 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-slate-500 rounded-xl transition-all group text-left">
-              <div className={`p-3 bg-slate-900 rounded-lg group-hover:scale-110 transition-transform ${f.color}`}>
-                <f.icon className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-slate-200">{f.label}</div>
-                <div className="text-[10px] text-slate-500">{f.desc}</div>
-              </div>
-            </button>
-          ))}
+          {exporting ? (
+            <div className="flex flex-col items-center gap-3 py-8 text-slate-400">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-400" />
+              <span className="text-sm">
+                {viewType === 'marp' ? '슬라이드 캡처 중... 잠시 기다려 주세요' : '문서 변환 중... 잠시 기다려 주세요'}
+              </span>
+            </div>
+          ) : (
+            formats.map(f => (
+              <button key={f.id}
+                onClick={() => { onExport(f.id); }}
+                className="flex items-center gap-4 p-4 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-slate-500 rounded-xl transition-all group text-left">
+                <div className={`p-3 bg-slate-900 rounded-lg group-hover:scale-110 transition-transform ${f.color}`}>
+                  <f.icon className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-slate-200">{f.label}</div>
+                  <div className="text-[10px] text-slate-500">{f.desc}</div>
+                </div>
+              </button>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -81,185 +109,166 @@ const ExportModal: React.FC<ExportModalProps> = ({ isOpen, onClose, onExport }) 
 };
 
 // ──────────────────────────────────────────────
-// SlideCard  –  single slide rendered as 16:9 card
+// SlideCard
 // ──────────────────────────────────────────────
 const SLIDE_THEMES = [
-  { bg: 'bg-white',          text: 'prose-slate',    accent: 'border-blue-500'   },
-  { bg: 'bg-slate-900',      text: 'prose-invert',   accent: 'border-emerald-500'},
-  { bg: 'bg-blue-950',       text: 'prose-invert',   accent: 'border-cyan-400'   },
-  { bg: 'bg-amber-50',       text: 'prose-stone',    accent: 'border-amber-500'  },
+  { bg: 'bg-white',     text: 'prose-slate',  accent: 'border-blue-500'    },
+  { bg: 'bg-slate-900', text: 'prose-invert', accent: 'border-emerald-500' },
+  { bg: 'bg-blue-950',  text: 'prose-invert', accent: 'border-cyan-400'    },
+  { bg: 'bg-amber-50',  text: 'prose-stone',  accent: 'border-amber-500'   },
 ];
 
 const SlideCard: React.FC<{ slide: ParsedSlide; total: number }> = ({ slide, total }) => {
   const theme = SLIDE_THEMES[slide.index % SLIDE_THEMES.length];
-  const isFirstSlide = slide.index === 0;
-
   return (
     <div
       className={`relative rounded-xl shadow-2xl overflow-hidden border-t-4 ${theme.accent} ${theme.bg}`}
       style={{ width: '100%', maxWidth: '854px', aspectRatio: '16/9', flexShrink: 0 }}
     >
-      {/* slide number */}
       <span className="absolute top-3 right-4 text-[10px] font-mono text-slate-400 z-10">
         {slide.index + 1} / {total}
       </span>
-
-      {/* content */}
       <div className={`w-full h-full overflow-hidden flex flex-col justify-center
-        ${isFirstSlide ? 'px-16 py-12' : 'px-12 py-10'}
         prose ${theme.text} max-w-none
         prose-h1:text-4xl prose-h1:font-black prose-h1:leading-tight prose-h1:mb-3
         prose-h2:text-2xl prose-h2:font-bold prose-h2:mb-2
         prose-h3:text-xl prose-h3:font-semibold
         prose-p:text-base prose-p:leading-relaxed
         prose-li:text-base prose-li:leading-relaxed
-        prose-table:text-sm
-        prose-code:text-xs
-      `}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-          {slide.content}
-        </ReactMarkdown>
+        prose-table:text-sm prose-code:text-xs`}>
+        {slide.html
+          ? <div className="h-full w-full" dangerouslySetInnerHTML={{ __html: slide.html }} />
+          : <ReactMarkdown remarkPlugins={[remarkGfm]}>{slide.content}</ReactMarkdown>}
       </div>
     </div>
   );
 };
 
 // ──────────────────────────────────────────────
-// Main editor
+// Main Editor
 // ──────────────────────────────────────────────
 const DesignDocEditor: React.FC<DesignDocEditorProps> = ({
-  initialContent = `
-    # 화면 설계서
-    
-    ## 개요
-    이 화면은 ... 을 위한 화면입니다.
-    
-    ## 주요 기능
-    - 기능 1
-    - 기능 2
-    
-    ---
+  initialContent = `---
+marp: true
+theme: default
+---
 
-    ## 화면 레이아웃
-    | 영역 | 설명 |
-    | --- | --- |
-    | 헤더 | 시스템 로고 및 사용자 정보 |
-    | 사이드바 | 메뉴 네비게이션 |
-    | 메인 | 데이터 그리드 및 상세 정보 |
+# 화면 설계서
 
-    ---
-    
-    ## 기능 상세
-    - 상세 기능 A
-    - 상세 기능 B
-    - 상세 기능 C'`,
+## 개요
+이 화면은 ... 을 위한 화면입니다.
+
+---
+
+## 주요 기능
+- 기능 1
+- 기능 2
+
+---
+
+## 화면 레이아웃
+| 영역 | 설명 |
+| --- | --- |
+| 헤더 | 시스템 로고 및 사용자 정보 |
+| 사이드바 | 메뉴 네비게이션 |
+| 메인 | 데이터 그리드 및 상세 정보 |
+
+---
+
+## 기능 상세
+- 상세 기능 A
+- 상세 기능 B
+- 상세 기능 C`,
   onSave,
 }) => {
-  const [content, setContent]               = useState(initialContent || '');
-  const [viewType, setViewType]             = useState<ViewType>('standard');
-  const [layout, setLayout]                 = useState<LayoutType>('split');
-  const [isPreviewOpen, setIsPreviewOpen]   = useState(false);
-  const [isExportOpen, setIsExportOpen]     = useState(false);
-  const [currentSlide, setCurrentSlide]     = useState(0);
-  const [slides, setSlides]                 = useState<ParsedSlide[]>([]);
-  const previewRef                          = useRef<HTMLDivElement>(null);
+  const [content, setContent]             = useState(initialContent || '');
+  const [viewType, setViewType]           = useState<ViewType>('marp');
+  const [layout, setLayout]               = useState<LayoutType>('split');
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen]   = useState(false);
+  const [exporting, setExporting]         = useState(false);
+  const [slides, setSlides]               = useState<ParsedSlide[]>([]);
+  const [marpCss, setMarpCss]             = useState('');
+  const previewRef                        = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (initialContent != null) setContent(initialContent);
   }, [initialContent]);
 
-  // ── parse slides whenever content or viewType changes
   useEffect(() => {
     if (viewType === 'marp') {
-      const parsed = parseSlides(content);
-      setSlides(parsed);
-      setCurrentSlide(0);
+      try {
+        const { html, css } = marpInstance.render(content);
+        setMarpCss(css);
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const parsed: ParsedSlide[] = Array.from(doc.querySelectorAll('section')).map((s, i) => ({
+          content: s.innerText,
+          html: s.outerHTML,
+          index: i,
+        }));
+        setSlides(parsed);
+      } catch {
+        setSlides(parseSlides(content));
+      }
+    } else {
+      setSlides(parseSlides(content));
     }
   }, [content, viewType]);
 
-  // ── keyboard navigation
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (viewType !== 'marp') return;
-      if (e.key === 'ArrowRight' || e.key === ' ') setCurrentSlide(p => Math.min(p + 1, slides.length - 1));
-      if (e.key === 'ArrowLeft')                    setCurrentSlide(p => Math.max(p - 1, 0));
+      if (e.key === 'ArrowRight' || e.key === ' ')
+        setSlides(prev => { /* 키보드 탐색은 currentSlide로 분리 필요 시 추가 */ return prev; });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [viewType, slides.length]);
+  }, [viewType]);
 
-  // ── export helpers
-  const getExportHTML = () => {
-    const body = previewRef.current?.innerHTML || '';
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-      <style>body{font-family:sans-serif;padding:40px}
-      table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px}th{background:#f2f2f2}
-      h1{font-size:2em;border-bottom:1px solid #eee;padding-bottom:.3em}
-      h2{font-size:1.5em;border-bottom:1px solid #eee;padding-bottom:.3em}
-      ul{list-style:disc;margin-left:20px}</style></head>
-      <body>${body}</body></html>`;
-  };
-
-  const handleExport = async (type: 'html' | 'pdf' | 'docx' | 'pptx') => {
-    if (type === 'html') {
-      const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(new Blob([getExportHTML()], { type: 'text/html' })),
-        download: 'design_document.html',
-      });
-      a.click();
+  // ── Export handler ──────────────────────────────────────────────────────────
+  const handleExport = async (type: 'html' | 'pdf' | 'docx' | 'pptx' | 'md') => {
+    setExporting(true);
+    try {
+      if (viewType === 'marp') {
+        switch (type) {
+          case 'html': doMarpExportHTML(content); break;
+          case 'pdf':  await doMarpExportPDF(content); break;
+          case 'docx': await doMarpExportDOCX(content); break;
+          case 'pptx': await doMarpExportPPTX(content); break;
+          case 'md' :   await doStandardExportMarkdown(content); break;
+        }
+      } else {
+        switch (type) {
+          case 'html': doStandardExportHTML(content); break;
+          case 'pdf':  await doStandardExportPDF(content); break;
+          case 'docx': await doStandardExportDOCX(content); break;
+          case 'md' :   await doStandardExportMarkdown(content); break;
+      }
     }
-    if (type === 'pdf') {
-      const el = previewRef.current;
-      if (el) html2pdf().set({ margin:10, filename:'design_document.pdf',
-        image:{type:'jpeg',quality:.98}, html2canvas:{scale:2},
-        jsPDF:{unit:'mm',format:'a4',orientation:'portrait'} }).from(el).save();
-    }
-    if (type === 'docx') {
-      // @ts-ignore
-      const blob = await asBlob(getExportHTML());
-      const a = Object.assign(document.createElement('a'), {
-        href: URL.createObjectURL(blob as Blob), download: 'design_document.docx',
-      });
-      a.click();
-    }
-    if (type === 'pptx') {
-      const pres = new pptxgen();
-      pres.layout = 'LAYOUT_16x9';
-      (slides.length ? slides : [{ content, index: 0 }]).forEach(slide => {
-        const s  = pres.addSlide();
-        const parser = new DOMParser();
-        const doc  = parser.parseFromString(
-          `<div>${slide.content}</div>`, 'text/html');
-        const title = doc.querySelector('h1,h2')?.textContent || '';
-        const items = Array.from(doc.querySelectorAll('li')).map(l => l.textContent || '');
-        const paras = Array.from(doc.querySelectorAll('p')).map(p => p.textContent || '');
-        if (title) s.addText(title, { x:.5,y:.5,w:'90%',h:1,fontSize:24,bold:true,color:'363636' });
-        let y = 1.5;
-        paras.filter(p => p !== title).forEach(p => {
-          s.addText(p, { x:.5,y,w:'90%',h:.5,fontSize:14,color:'666666' }); y += .6;
-        });
-        items.forEach(item => {
-          s.addText(item, { x:.8,y,w:'85%',h:.4,fontSize:12,bullet:true,color:'444444' }); y += .5;
-        });
-      });
-      pres.writeFile({ fileName: 'design_document.pptx' });
+    setIsExportOpen(false);
+    } catch (err) {
+      console.error(`Export (${type}) 실패:`, err);
+      alert(`내보내기 실패: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setExporting(false);
     }
   };
 
-  // ── slide renderer
+  // ── Slide renderer ──────────────────────────────────────────────────────────
   const renderSlides = () => (
     <div className="w-full flex flex-col gap-8 pb-20 items-center">
+      <style dangerouslySetInnerHTML={{ __html: marpCss }} />
       {slides.length === 0
         ? <p className="text-slate-500 text-sm mt-10">슬라이드가 없습니다. <code>---</code> 구분자로 슬라이드를 나눠보세요.</p>
-        : slides.map(s => <SlideCard key={s.index} slide={s} total={slides.length} />)
-      }
+        : slides.map(s => <SlideCard key={s.index} slide={s} total={slides.length} />)}
     </div>
   );
 
   return (
     <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
 
-      {/* ── Toolbar ── */}
+      {/* Toolbar */}
       <div className="px-4 py-2 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -270,22 +279,24 @@ const DesignDocEditor: React.FC<DesignDocEditorProps> = ({
 
           {/* View mode */}
           <div className="flex bg-slate-800 p-1 rounded-lg gap-1">
-            {(['standard','marp'] as ViewType[]).map(v => (
+            {(['standard', 'marp'] as ViewType[]).map(v => (
               <button key={v} onClick={() => setViewType(v)}
                 className={`px-3 py-1 rounded-md text-[10px] font-bold flex items-center gap-1.5 transition-all
-                  ${viewType===v
-                    ? v==='standard' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
+                  ${viewType === v
+                    ? v === 'standard' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
                     : 'text-slate-400 hover:text-slate-200'}`}>
-                {v==='standard' ? <><Layout className="w-3 h-3"/>STANDARD</> : <><Presentation className="w-3 h-3"/>MARP (SLIDES)</>}
+                {v === 'standard'
+                  ? <><Layout className="w-3 h-3" />STANDARD</>
+                  : <><Presentation className="w-3 h-3" />MARP (SLIDES)</>}
               </button>
             ))}
           </div>
 
           {/* Layout mode */}
           <div className="flex bg-slate-800 p-1 rounded-lg gap-1">
-            {([['split',Split,'Split'],['edit',Edit3,'Editor Only'],['preview',Eye,'Preview Only']] as const).map(([l,Icon,title]) => (
+            {([['split', Split, 'Split'], ['edit', Edit3, 'Editor Only'], ['preview', Eye, 'Preview Only']] as const).map(([l, Icon, title]) => (
               <button key={l} onClick={() => setLayout(l)} title={title}
-                className={`p-1.5 rounded-md transition-all ${layout===l ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
+                className={`p-1.5 rounded-md transition-all ${layout === l ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
                 <Icon className="w-3.5 h-3.5" />
               </button>
             ))}
@@ -304,22 +315,31 @@ const DesignDocEditor: React.FC<DesignDocEditorProps> = ({
         </div>
       </div>
 
-      <ExportModal isOpen={isExportOpen} onClose={() => setIsExportOpen(false)} onExport={handleExport} />
+      <ExportModal
+        isOpen={isExportOpen}
+        onClose={() => !exporting && setIsExportOpen(false)}
+        onExport={handleExport}
+        exporting={exporting}
+        viewType={viewType}
+      />
 
-      {/* ── Editor + Preview ── */}
+      {/* Editor + Preview */}
       <div className="flex-1 flex overflow-hidden bg-slate-950/50">
         {(layout === 'split' || layout === 'edit') && (
-          <div className={`${layout==='split' ? 'w-1/2' : 'w-full'} border-r border-slate-800`}>
+          <div className={`${layout === 'split' ? 'w-1/2' : 'w-full'} border-r border-slate-800`}>
             <Editor height="100%" defaultLanguage="markdown" value={content}
-              onChange={v => setContent(v||'')} theme="vs-dark"
-              options={{ minimap:{enabled:false}, fontSize:14, lineNumbers:'on',
-                scrollBeyondLastLine:false, automaticLayout:true, padding:{top:20,bottom:20},
-                fontFamily:"'Fira Code', monospace", wordWrap:'on' }} />
+              onChange={v => setContent(v || '')} theme="vs-dark"
+              options={{
+                minimap: { enabled: false }, fontSize: 14, lineNumbers: 'on',
+                scrollBeyondLastLine: false, automaticLayout: true,
+                padding: { top: 20, bottom: 20 },
+                fontFamily: "'Fira Code', monospace", wordWrap: 'on',
+              }} />
           </div>
         )}
 
         {(layout === 'split' || layout === 'preview') && (
-          <div className={`${layout==='split' ? 'w-1/2' : 'w-full'} flex flex-col overflow-hidden
+          <div className={`${layout === 'split' ? 'w-1/2' : 'w-full'} flex flex-col overflow-hidden
             bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px]`}>
             <div className="flex-1 overflow-auto p-8" ref={previewRef}>
               <div className="max-w-4xl mx-auto">
@@ -337,7 +357,7 @@ const DesignDocEditor: React.FC<DesignDocEditorProps> = ({
         )}
       </div>
 
-      {/* ── Footer ── */}
+      {/* Footer */}
       <div className="px-4 py-1.5 bg-slate-950 border-t border-slate-800 flex justify-between items-center shrink-0">
         <div className="flex items-center gap-4">
           <span className="text-[10px] text-slate-500 font-mono">
@@ -356,7 +376,7 @@ const DesignDocEditor: React.FC<DesignDocEditorProps> = ({
         )}
       </div>
 
-      {/* ── Full Screen Preview ── */}
+      {/* Full Screen Preview */}
       {isPreviewOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col">
           <div className="px-6 py-4 border-b border-slate-800 bg-slate-900 flex justify-between items-center">
