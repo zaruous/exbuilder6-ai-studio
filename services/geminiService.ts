@@ -281,3 +281,238 @@ export async function generateExBuilderCode(
     return finalResult;
 }
 
+// ──────────────────────────────────────────────────────────
+// Design Doc Refine: 현재 문서 + 지시문 → 수정된 마크다운 반환
+// ──────────────────────────────────────────────────────────
+export async function refineDesignDoc(
+    currentContent: string,
+    instruction: string,
+    settings: GenerationSettings
+): Promise<string> {
+    const currentConfig = settings.providerConfigs[settings.provider];
+    const systemPrompt = `You are an expert UI/UX Designer and Technical Writer.
+Refine the given Markdown/Marp design document based on the user instruction.
+Preserve the overall structure and Marp front-matter if present.
+Return ONLY the complete updated Markdown. No code fences, no extra commentary.`;
+
+    const userPrompt = `[CURRENT DOCUMENT]\n${currentContent}\n\n[INSTRUCTION]\n${instruction}\n\nReturn the complete updated Markdown document.`;
+
+    if (settings.provider === 'gemini') {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+            model: currentConfig.modelName || 'gemini-3-pro-preview',
+            contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+            config: {
+                temperature: settings.temperature,
+                systemInstruction: systemPrompt,
+            }
+        });
+        const text = response.text || '';
+        return text.replace(/^```(?:markdown)?\n?/m, '').replace(/\n?```$/m, '').trim() || currentContent;
+    }
+
+    if (settings.provider === 'openai' || settings.provider === 'ollama') {
+        const isDefaultOllama = settings.provider === 'ollama' && (!currentConfig.baseUrl || currentConfig.baseUrl.includes('localhost:11434'));
+        let baseUrl = isDefaultOllama ? '/ollama-api/v1' : (currentConfig.baseUrl || 'https://api.openai.com/v1');
+        if (settings.provider === 'ollama' && !baseUrl.includes('/v1')) {
+            baseUrl = baseUrl.replace(/\/+$/, '') + '/v1';
+        }
+        const sanitizedBaseUrl = baseUrl.replace(/\/+$/, '');
+
+        const response = await fetch(`${sanitizedBaseUrl}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer sk-dummy' },
+            body: JSON.stringify({
+                model: currentConfig.modelName,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                ],
+                temperature: settings.temperature,
+            })
+        });
+        if (!response.ok) throw new Error(`Provider Error: ${await response.text()}`);
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content || '';
+        return text.replace(/^```(?:markdown)?\n?/m, '').replace(/\n?```$/m, '').trim() || currentContent;
+    }
+
+    if (settings.provider === 'web-service') {
+        if (!currentConfig.baseUrl) throw new Error('Base URL required.');
+        const response = await fetch(currentConfig.baseUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt: userPrompt,
+                systemPrompt,
+                stage: 'design',
+                mode: 'refine',
+                settings: { ...settings }
+            })
+        });
+        if (!response.ok) throw new Error(`Web Service Error: ${await response.text()}`);
+        const data = await response.json();
+        return (data.designDoc || data.content || '').trim() || currentContent;
+    }
+
+    throw new Error('Unsupported provider');
+}
+
+// ──────────────────────────────────────────────────────────
+// 공통 헬퍼
+// ──────────────────────────────────────────────────────────
+const stripFences = (text: string) =>
+    text.replace(/^```[\w]*\n?/m, '').replace(/\n?```$/m, '').trim();
+
+const buildOpenAIBaseUrl = (settings: GenerationSettings): string => {
+    const cfg = settings.providerConfigs[settings.provider];
+    const isDefaultOllama = settings.provider === 'ollama' && (!cfg.baseUrl || cfg.baseUrl.includes('localhost:11434'));
+    let baseUrl = isDefaultOllama ? '/ollama-api/v1' : (cfg.baseUrl || 'https://api.openai.com/v1');
+    if (settings.provider === 'ollama' && !baseUrl.includes('/v1')) baseUrl = baseUrl.replace(/\/+$/, '') + '/v1';
+    return baseUrl.replace(/\/+$/, '');
+};
+
+// ──────────────────────────────────────────────────────────
+// Code Refine: CLX(XML) / JS / SQL 코드 수정
+// ──────────────────────────────────────────────────────────
+export async function refineCode(
+    currentCode: string,
+    instruction: string,
+    language: 'xml' | 'javascript' | 'sql',
+    settings: GenerationSettings
+): Promise<string> {
+    const cfg = settings.providerConfigs[settings.provider];
+    const langLabels: Record<string, string> = {
+        xml: 'eXbuilder6 XML Layout (.clx)',
+        javascript: 'eXbuilder6 JavaScript Controller (.js)',
+        sql: 'SQL Script',
+    };
+    const systemPrompt = `You are an expert developer specializing in ${langLabels[language]}.
+Refine the given code based on the user instruction.
+Return ONLY the complete updated code. No code fences, no extra commentary.`;
+    const userPrompt = `[CURRENT CODE]\n${currentCode}\n\n[INSTRUCTION]\n${instruction}\n\nReturn the complete updated code.`;
+
+    if (settings.provider === 'gemini') {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+            model: cfg.modelName || 'gemini-3-pro-preview',
+            contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+            config: { temperature: settings.temperature, systemInstruction: systemPrompt }
+        });
+        return stripFences(response.text || '') || currentCode;
+    }
+
+    if (settings.provider === 'openai' || settings.provider === 'ollama') {
+        const response = await fetch(`${buildOpenAIBaseUrl(settings)}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer sk-dummy' },
+            body: JSON.stringify({
+                model: cfg.modelName,
+                messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+                temperature: settings.temperature,
+            })
+        });
+        if (!response.ok) throw new Error(`Provider Error: ${await response.text()}`);
+        const data = await response.json();
+        return stripFences(data.choices?.[0]?.message?.content || '') || currentCode;
+    }
+
+    if (settings.provider === 'web-service') {
+        if (!cfg.baseUrl) throw new Error('Base URL required.');
+        const response = await fetch(cfg.baseUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: userPrompt, systemPrompt, stage: language, mode: 'refine', settings: { ...settings } })
+        });
+        if (!response.ok) throw new Error(`Web Service Error: ${await response.text()}`);
+        const data = await response.json();
+        // 서버 응답 필드: sql→sqlCode, xml→clxCode, javascript→jsCode
+        const fieldMap: Record<string, string> = { sql: 'sqlCode', xml: 'clxCode', javascript: 'jsCode' };
+        const refined = data[fieldMap[language]] || data.code || data.content || '';
+        return refined.trim() || currentCode;
+    }
+
+    throw new Error('Unsupported provider');
+}
+
+// ──────────────────────────────────────────────────────────
+// Java Files Refine: Spring Boot 파일 목록 수정
+// ──────────────────────────────────────────────────────────
+export async function refineJavaFiles(
+    files: import('../types').JavaFile[],
+    instruction: string,
+    settings: GenerationSettings
+): Promise<import('../types').JavaFile[]> {
+    const cfg = settings.providerConfigs[settings.provider];
+    const filesJson = JSON.stringify(files, null, 2);
+    const systemPrompt = `You are an expert Spring Boot Java developer.
+Refine the given Java source files based on the user instruction.
+Return a JSON object: { "javaFiles": [ { "fileName": string, "packagePath": string, "content": string, "type": "controller"|"service"|"model" } ] }`;
+    const userPrompt = `[CURRENT FILES]\n${filesJson}\n\n[INSTRUCTION]\n${instruction}\n\nReturn the updated javaFiles array as JSON.`;
+
+    if (settings.provider === 'gemini') {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({
+            model: cfg.modelName || 'gemini-3-pro-preview',
+            contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+            config: {
+                temperature: settings.temperature,
+                systemInstruction: systemPrompt,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        javaFiles: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    fileName:    { type: Type.STRING },
+                                    packagePath: { type: Type.STRING },
+                                    content:     { type: Type.STRING },
+                                    type:        { type: Type.STRING, enum: ['controller', 'service', 'model'] }
+                                },
+                                required: ['fileName', 'packagePath', 'content', 'type']
+                            }
+                        }
+                    },
+                    required: ['javaFiles']
+                }
+            }
+        });
+        const parsed = JSON.parse(response.text || '{}');
+        return parsed.javaFiles || files;
+    }
+
+    if (settings.provider === 'openai' || settings.provider === 'ollama') {
+        const response = await fetch(`${buildOpenAIBaseUrl(settings)}/chat/completions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer sk-dummy' },
+            body: JSON.stringify({
+                model: cfg.modelName,
+                messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }],
+                temperature: settings.temperature,
+                response_format: { type: 'json_object' }
+            })
+        });
+        if (!response.ok) throw new Error(`Provider Error: ${await response.text()}`);
+        const data = await response.json();
+        const raw = data.choices?.[0]?.message?.content || '{}';
+        const parsed = JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw));
+        return parsed.javaFiles || files;
+    }
+
+    if (settings.provider === 'web-service') {
+        if (!cfg.baseUrl) throw new Error('Base URL required.');
+        const response = await fetch(cfg.baseUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: userPrompt, systemPrompt, stage: 'server', mode: 'refine', settings: { ...settings } })
+        });
+        if (!response.ok) throw new Error(`Web Service Error: ${await response.text()}`);
+        const data = await response.json();
+        return data.javaFiles || files;
+    }
+
+    throw new Error('Unsupported provider');
+}

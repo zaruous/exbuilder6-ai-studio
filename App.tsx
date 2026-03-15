@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { generateExBuilderCode } from './services/geminiService';
+import { generateExBuilderCode, refineDesignDoc, refineCode, refineJavaFiles } from './services/geminiService';
 import { getSharedComponents, registerComponent } from './services/communityService';
 import { GenerationResult, TabType, GenerationSettings, SharedComponent, GenerationStage } from './types';
+import { SAMPLE_DESIGN_DOC, SAMPLE_CLX, SAMPLE_JS, SAMPLE_SQL, getSampleJavaFiles } from './constants/sampleCode';
 import CodeBlock from './components/CodeBlock';
 import LogViewer from './components/LogViewer';
 import SettingsModal from './components/SettingsModal';
@@ -200,88 +201,28 @@ const App: React.FC = () => {
   // --- Dynamic Synthesis Helpers ---
   const getSynthesizedDesignDoc = () => {
     if (result?.designDoc) return result.designDoc;
-    
-    // Default template if result is not yet available or missing designDoc
-    const baseContent = `
-# [기준정보] 공정 설정 화면 설계서
+    return SAMPLE_DESIGN_DOC;
+  };
 
-## 1. 화면명
-**공정 설정 (Process Configuration)**
+  const getSynthesizedClx = () => {
+    if (result?.clxCode) return result.clxCode;
+    return SAMPLE_CLX;
+  };
 
----
-
-## 2. 화면 내용 요약
-생산 현장의 작업 단계(공정)에 대한 기준 정보를 정의하고 관리하는 화면입니다.
-
-공정별 물류 속성(창고 여부), 시스템 제어 속성(가상 공정, PULL 방식),
-외부 시스템 연동(ERP) 설정을 통해 생산 프로세스의 뼈대를 구축합니다.
-
----
-
-## 3. 화면 이미지 (아스키아트)
-
-    /----------------------------------------------------------------------------\\
-    | [ ] 공정 설정                                 전체 메뉴 > 기준정보 > 생산기준정보 > 공정 설정 |
-    +----------------------------------------------------------------------------+
-    |  공정코드 [__________]  공정명 [__________]  공정유형 [ 선택 v ]               |
-    |  공정구분 (●) 생산 공정  (○) 창고 관리                      [ 초기화 ] [ 조회 ] |
-    +----------------------------------------------------------------------------+
-    |                                                                            |
-    | 공정 목록                                                                  |
-    | [ 전체 5 ] | [20개씩 보기 v]           [ 엑셀 업로드 ] [ 엑셀 ] [ 삭제 ] [ 신규 ] |
-    +----+----+----+----------+----------+----+----+----+----+----+----+----------+
-    | □ | No |상세| 공정코드 | 공정명   |단위|창고|가상|시작|PULL|ERP |ERP공정코드|
-    +----+----+----+----------+----------+----+----+----+----+----+----+----------+
-    | □ | 1  | 🔍 | 001      | 투입     | 개 | [ ]| [ ]| [ ]| [ ]| [ ]|          |
-    | □ | 2  | 🔍 | 002      | 반응     | 개 | [ ]| [ ]| [ ]| [ ]| [ ]|          |
-    | □ | 3  | 🔍 | 003      | 이송     | 개 | [ ]| [ ]| [ ]| [ ]| [ ]|          |
-    | □ | 4  | 🔍 | 004      | 포장     | 개 | [ ]| [ ]| [ ]| [ ]| [ ]|          |
-    | □ | 5  | 🔍 | TEST_OP  | 테스트   | KG | [ ]| [ ]| [ ]| [ ]| [ ]|          |
-    +----+----+----+----------+----------+----+----+----+----+----+----+----------+
-
----
-
-## 4. 버튼 설명
-
-| 버튼명     | 기능 설명                                 | 주요 로직                                             |
-|------------|--------------------------------------------|--------------------------------------------------------|
-| 조회       | 입력된 조건으로 공정 목록을 검색           | 공정코드/명칭 Like 검색, 구분/유형 일치 검색            |
-| 초기화     | 검색 조건 필드를 기본값으로 리셋          | processCode, processName 빈값 처리 등                 |
-| 엑셀 업로드 | 엑셀 파일을 통해 공정 정보 일괄 등록      | 양식 검증 및 saveProcess 대량 실행                    |
-| 엑셀       | 그리드 데이터를 엑셀 파일로 다운로드       | -                                                      |
-| 삭제       | 체크된 항목의 공정 정보 삭제              | 사용 중인 공정(BOM, 실적 등) 여부 체크 후 삭제        |
-| 신규       | 신규 공정 정보 입력을 위한 팝업 오픈      | 상세 보기와 동일한 팝업 활용                          |
-
----
-
-## 5. 서비스 처리 (테이블)
-
-| 서비스주소                                                | 메소드 | 기능설명                    | 참조 테이블·SQL (예시)                                                                                       |
-|--------------------------------------------|--------|-----------------------------|---------------------------------------------------------------------------------------------------------------|
-| /api/basis/proc/listProcessService         | GET    | 공정 목록 조회              | SELECT * FROM TB_PROC_MST WHERE PROC_CD LIKE :procCd AND PROC_NM LIKE :procNm                                  |
-| /api/basis/proc/saveProcessService         | POST   | 공정 정보 저장/수정         | MERGE INTO TB_PROC_MST ... WHEN MATCHED THEN UPDATE ... WHEN NOT MATCHED THEN INSERT ...                        |
-| /api/basis/proc/removeProcessService       | DELETE | 선택 공정 삭제              | DELETE FROM TB_PROC_MST WHERE PROC_CD = :procCd                                                                 |
-| /api/basis/proc/uploadProcessService       | POST   | 엑셀 데이터 파싱 저장       | (Loop) INSERT INTO TB_PROC_MST (...) VALUES (...)                                                               |
-
-`;
-    return baseContent;
+  const getSynthesizedJs = () => {
+    if (result?.jsCode) return result.jsCode;
+    return SAMPLE_JS;
   };
 
   const getSynthesizedSql = () => {
     if (result?.sqlCode) return result.sqlCode;
-    if (!result) return '';
-    
-    return `-- [SCHEMA SPECIFICATION]
--- Target: ${prompt}
--- Dialect: ${settings.dbms.toUpperCase()}
+    return SAMPLE_SQL;
+  };
 
--- The AI is using the following strategy for data mapping:
--- ${result.explanation.split('.')[0]}.
-
-/* 
-  Full DDL script is omitted as 'SQL' stage was not selected.
-  Please select 'SQL' in the target menu for a complete script.
-*/`;
+  const getSynthesizedJavaFiles = (): import('./types').JavaFile[] => {
+    if (result?.javaFiles && result.javaFiles.length > 0) return result.javaFiles;
+    const pkg = settings.basePackage || 'com.example';
+    return getSampleJavaFiles(pkg);
   };
 
   return (
@@ -531,27 +472,8 @@ const App: React.FC = () => {
 
             {/* Content Area */}
             <div className="flex-1 overflow-hidden relative">
-                {activeTab === TabType.DESIGN_DOC && (
-                    <div className="h-full flex flex-col">
-                        <DesignDocEditor 
-                          initialContent={getSynthesizedDesignDoc()} 
-                          onSave={(content) => setResult(prev => prev ? {...prev, designDoc: content} : { logs: [], explanation: 'Manual update', designDoc: content })} 
-                        />
-                    </div>
-                )}
 
-                {!result && !loading && activeTab !== TabType.DESIGN_DOC && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 gap-4">
-                    <div className="w-16 h-16 rounded-full border-2 border-dashed border-slate-800 flex items-center justify-center">
-                    <Cpu className="w-8 h-8 opacity-20" />
-                    </div>
-                    <div className="text-center">
-                    <p className="text-sm font-medium">Ready to build your next component</p>
-                    <p className="text-xs opacity-50">Results will appear here once generated</p>
-                    </div>
-                </div>
-                )}
-
+                {/* ── Loading overlay ── */}
                 {loading && (
                 <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-6">
                     <div className="relative">
@@ -570,32 +492,113 @@ const App: React.FC = () => {
                 </div>
                 )}
 
-                {result && (
-                <div className="h-full flex flex-col gap-4">
-                    {activeTab === TabType.CLX && (
-                    <CodeBlock title="eXbuilder6 Layout (XML)" language="xml" code={result.clxCode || ''} />
-                    )}
-                    {activeTab === TabType.JS && (
-                    <CodeBlock title="eXbuilder6 Controller (JavaScript)" language="javascript" code={result.jsCode || ''} />
-                    )}
-                    {activeTab === TabType.SQL && (
-                    <CodeBlock title="Database Script (SQL)" language="sql" code={getSynthesizedSql()} />
-                    )}
-                    {activeTab === TabType.SERVER && (
-                    <ServerCodeViewer files={result.javaFiles || []} />
-                    )}
-                    {/* DESIGN_DOC is handled outside this block to support empty state */}
-                    {activeTab === TabType.LOGS && (
-                    <LogViewer logs={result.logs} />
-                    )}
-                    {activeTab === TabType.PREVIEW && (
+                {/* ── Design Doc ── */}
+                {activeTab === TabType.DESIGN_DOC && (
+                    <div className="h-full flex flex-col">
+                        <DesignDocEditor
+                          initialContent={getSynthesizedDesignDoc()}
+                          onSave={(content) => setResult(prev => prev ? {...prev, designDoc: content} : { logs: [], explanation: 'Manual update', designDoc: content })}
+                          onRefine={async (instruction, currentContent) => {
+                            const refined = await refineDesignDoc(currentContent, instruction, settings);
+                            setResult(prev => prev ? { ...prev, designDoc: refined } : { logs: [], explanation: 'AI Refined', designDoc: refined });
+                            return refined;
+                          }}
+                        />
+                    </div>
+                )}
+
+                {/* ── Layout (CLX) ── */}
+                {activeTab === TabType.CLX && (
+                <div className="h-full flex flex-col">
+                    <CodeBlock
+                      title="eXbuilder6 Layout (XML)"
+                      language="xml"
+                      code={getSynthesizedClx()}
+                      onChange={(code) => setResult(prev => prev ? { ...prev, clxCode: code } : { logs: [], explanation: 'Manual edit', clxCode: code })}
+                      onRefine={async (instruction, currentCode) => {
+                        const refined = await refineCode(currentCode, instruction, 'xml', settings);
+                        setResult(prev => prev ? { ...prev, clxCode: refined } : { logs: [], explanation: 'AI Refined', clxCode: refined });
+                        return refined;
+                      }}
+                    />
+                </div>
+                )}
+
+                {/* ── Script (JS) ── */}
+                {activeTab === TabType.JS && (
+                <div className="h-full flex flex-col">
+                    <CodeBlock
+                      title="eXbuilder6 Controller (JavaScript)"
+                      language="javascript"
+                      code={getSynthesizedJs()}
+                      onChange={(code) => setResult(prev => prev ? { ...prev, jsCode: code } : { logs: [], explanation: 'Manual edit', jsCode: code })}
+                      onRefine={async (instruction, currentCode) => {
+                        const refined = await refineCode(currentCode, instruction, 'javascript', settings);
+                        setResult(prev => prev ? { ...prev, jsCode: refined } : { logs: [], explanation: 'AI Refined', jsCode: refined });
+                        return refined;
+                      }}
+                    />
+                </div>
+                )}
+
+                {/* ── SQL ── */}
+                {activeTab === TabType.SQL && (
+                <div className="h-full flex flex-col">
+                    <CodeBlock
+                      title="Database Script (SQL)"
+                      language="sql"
+                      code={getSynthesizedSql()}
+                      onChange={(code) => setResult(prev => prev ? { ...prev, sqlCode: code } : { logs: [], explanation: 'Manual edit', sqlCode: code })}
+                      onRefine={async (instruction, currentCode) => {
+                        const refined = await refineCode(currentCode, instruction, 'sql', settings);
+                        setResult(prev => prev ? { ...prev, sqlCode: refined } : { logs: [], explanation: 'AI Refined', sqlCode: refined });
+                        return refined;
+                      }}
+                    />
+                </div>
+                )}
+
+                {/* ── Server (Java) ── */}
+                {activeTab === TabType.SERVER && (
+                <div className="h-full flex flex-col">
+                    <ServerCodeViewer
+                      files={getSynthesizedJavaFiles()}
+                      onFilesUpdate={(files) => setResult(prev => prev ? { ...prev, javaFiles: files } : { logs: [], explanation: 'Manual edit', javaFiles: files })}
+                      onRefine={async (instruction, currentFiles) => {
+                        const refined = await refineJavaFiles(currentFiles, instruction, settings);
+                        setResult(prev => prev ? { ...prev, javaFiles: refined } : { logs: [], explanation: 'AI Refined', javaFiles: refined });
+                        return refined;
+                      }}
+                    />
+                </div>
+                )}
+
+                {/* ── Logs (result 있을 때만) ── */}
+                {activeTab === TabType.LOGS && (
+                <div className="h-full flex flex-col">
+                    {result
+                      ? <LogViewer logs={result.logs} />
+                      : <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 gap-4">
+                          <div className="w-16 h-16 rounded-full border-2 border-dashed border-slate-800 flex items-center justify-center">
+                            <Cpu className="w-8 h-8 opacity-20" />
+                          </div>
+                          <p className="text-sm font-medium">Generate code to view logs</p>
+                        </div>
+                    }
+                </div>
+                )}
+
+                {/* ── Preview (result 있을 때만) ── */}
+                {activeTab === TabType.PREVIEW && (
+                <div className="h-full flex flex-col">
+                    {result ? (
                     <div className="h-full bg-slate-900 rounded-xl border border-slate-800 overflow-hidden flex flex-col">
                         <div className="p-4 border-b border-slate-800 bg-slate-800/50 flex items-center justify-between">
                         <span className="text-xs font-semibold text-slate-400">Simulation Environment</span>
                         <span className="text-[10px] uppercase bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">Mock Render</span>
                         </div>
                         <div className="flex-1 p-8 overflow-auto flex items-center justify-center bg-white/5 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:20px_20px]">
-                        <div 
+                        <div
                             className="bg-slate-800 border border-slate-700 rounded shadow-2xl p-6 w-full max-w-lg min-h-[300px]"
                             dangerouslySetInnerHTML={{ __html: result.previewMock || '<div class="text-slate-500 flex flex-col items-center justify-center h-full gap-2"><p>Preview structure generated</p><p class="text-[10px]">Actual eXbuilder6 rendering requires runtime env</p></div>' }}
                         />
@@ -603,6 +606,16 @@ const App: React.FC = () => {
                         <div className="p-4 bg-slate-900 border-t border-slate-800">
                         <h4 className="text-xs font-bold text-slate-400 mb-1">Architecture Summary:</h4>
                         <p className="text-xs text-slate-500">{result.explanation}</p>
+                        </div>
+                    </div>
+                    ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 gap-4">
+                        <div className="w-16 h-16 rounded-full border-2 border-dashed border-slate-800 flex items-center justify-center">
+                        <Cpu className="w-8 h-8 opacity-20" />
+                        </div>
+                        <div className="text-center">
+                        <p className="text-sm font-medium">Ready to build your next component</p>
+                        <p className="text-xs opacity-50">Results will appear here once generated</p>
                         </div>
                     </div>
                     )}

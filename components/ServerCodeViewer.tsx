@@ -3,14 +3,23 @@ import React, { useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import { JavaFile } from '../types';
 import { Folder, FileCode, ChevronRight, ChevronDown, Database, Server, Box } from 'lucide-react';
+import RefinePromptBar from './RefinePromptBar';
 
 interface ServerCodeViewerProps {
   files: JavaFile[];
+  onRefine?: (instruction: string, currentFiles: JavaFile[]) => Promise<JavaFile[]>;
+  onFilesUpdate?: (files: JavaFile[]) => void;
 }
 
-const ServerCodeViewer: React.FC<ServerCodeViewerProps> = ({ files }) => {
-  const [selectedFile, setSelectedFile] = useState<JavaFile | null>(files[0] || null);
+const ServerCodeViewer: React.FC<ServerCodeViewerProps> = ({ files: initialFiles, onRefine, onFilesUpdate }) => {
+  const [files, setFiles] = useState<JavaFile[]>(initialFiles);
+  const [selectedFile, setSelectedFile] = useState<JavaFile | null>(initialFiles[0] || null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setFiles(initialFiles);
+    setSelectedFile(initialFiles[0] || null);
+  }, [initialFiles]);
 
   // Helper to build a tree structure from flat file list
   const buildTree = (files: JavaFile[]) => {
@@ -44,7 +53,7 @@ const ServerCodeViewer: React.FC<ServerCodeViewerProps> = ({ files }) => {
     setExpandedNodes(newExpanded);
   };
 
-  // Auto-expand all nodes on first load
+  // Auto-expand all nodes on first load / file list change
   useEffect(() => {
     const allKeys: string[] = [];
     const traverse = (node: any, prefix: string) => {
@@ -56,7 +65,7 @@ const ServerCodeViewer: React.FC<ServerCodeViewerProps> = ({ files }) => {
             }
         });
     };
-    traverse(tree, '');
+    traverse(buildTree(files), '');
     setExpandedNodes(new Set(allKeys));
   }, [files]);
 
@@ -114,60 +123,76 @@ const ServerCodeViewer: React.FC<ServerCodeViewerProps> = ({ files }) => {
   };
 
   return (
-    <div className="flex h-full border border-slate-700 rounded-lg overflow-hidden bg-[#1e293b]">
-      {/* File Tree Sidebar */}
-      <div className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
-        <div className="p-3 border-b border-slate-800 bg-slate-950/50">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Package Explorer</span>
+    <div className="flex flex-col h-full border border-slate-700 rounded-lg overflow-hidden bg-[#1e293b]">
+      <div className="flex flex-1 overflow-hidden">
+        {/* File Tree Sidebar */}
+        <div className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
+          <div className="p-3 border-b border-slate-800 bg-slate-950/50">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Package Explorer</span>
+          </div>
+          <div className="flex-1 overflow-auto p-2">
+              {files.length === 0 ? (
+                  <div className="text-slate-600 text-xs p-2">No java files generated.</div>
+              ) : (
+                  renderTree(tree)
+              )}
+          </div>
         </div>
-        <div className="flex-1 overflow-auto p-2">
-            {files.length === 0 ? (
-                <div className="text-slate-600 text-xs p-2">No java files generated.</div>
-            ) : (
-                renderTree(tree)
-            )}
+
+        {/* Editor Area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex justify-between items-center px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0">
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                  {selectedFile ? (
+                      <>
+                          <FileCode className="w-3 h-3" />
+                          {selectedFile.fileName}
+                      </>
+                  ) : 'Select a file'}
+              </span>
+              {selectedFile && (
+                  <button
+                  onClick={() => navigator.clipboard.writeText(selectedFile.content)}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                  Copy Content
+                  </button>
+              )}
+          </div>
+          <div className="flex-1 overflow-hidden">
+              <Editor
+                  height="100%"
+                  defaultLanguage="java"
+                  value={selectedFile?.content || '// Select a file from the explorer'}
+                  theme="vs-dark"
+                  options={{
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      lineNumbers: 'on',
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      padding: { top: 16, bottom: 16 },
+                      fontFamily: "'Fira Code', monospace",
+                      readOnly: true
+                  }}
+              />
+          </div>
         </div>
       </div>
 
-      {/* Editor Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-         <div className="flex justify-between items-center px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                {selectedFile ? (
-                    <>
-                        <FileCode className="w-3 h-3" />
-                        {selectedFile.fileName}
-                    </>
-                ) : 'Select a file'}
-            </span>
-            {selectedFile && (
-                <button 
-                onClick={() => navigator.clipboard.writeText(selectedFile.content)}
-                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                >
-                Copy Content
-                </button>
-            )}
-        </div>
-        <div className="flex-1 overflow-hidden">
-            <Editor
-                height="100%"
-                defaultLanguage="java"
-                value={selectedFile?.content || '// Select a file from the explorer'}
-                theme="vs-dark"
-                options={{
-                    minimap: { enabled: false },
-                    fontSize: 13,
-                    lineNumbers: 'on',
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    padding: { top: 16, bottom: 16 },
-                    fontFamily: "'Fira Code', monospace",
-                    readOnly: true
-                }}
-            />
-        </div>
-      </div>
+      {onRefine && (
+        <RefinePromptBar
+          tabLabel={`Server (${files.length} files)`}
+          placeholder="수정 요청을 입력하세요 (예: 예외 처리 추가, 트랜잭션 적용, Swagger 어노테이션 추가...)"
+          onApply={async (instruction) => {
+            const refined = await onRefine(instruction, files);
+            setFiles(refined);
+            setSelectedFile(refined[0] || null);
+            onFilesUpdate?.(refined);
+            return `${refined.length}개 파일이 업데이트되었습니다.`;
+          }}
+        />
+      )}
     </div>
   );
 };

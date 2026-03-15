@@ -3,7 +3,7 @@ import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  FileText, Presentation, Download, Maximize2, X, FileCode, FileDown, Layout,
+  FileText, Presentation, Download, Maximize2, Minimize2, X, FileCode, FileDown, Layout,
   Split, Eye, Edit3, Loader2
 } from 'lucide-react';
 import { Marp } from '@marp-team/marp-core';
@@ -12,6 +12,7 @@ import {
   doMarpExportHTML, doMarpExportPDF, doMarpExportDOCX, doMarpExportPPTX,
   doStandardExportMarkdown
 } from './exportUtils';
+import RefinePromptBar from './RefinePromptBar';
 
 // ──────────────────────────────────────────────
 // Types
@@ -23,6 +24,7 @@ type LayoutType = 'split' | 'edit' | 'preview';
 interface DesignDocEditorProps {
   initialContent?: string;
   onSave?: (content: string) => void;
+  onRefine?: (instruction: string, currentContent: string) => Promise<string>;
 }
 
 const marpInstance = new Marp({ html: true, inlineSVG: false });
@@ -148,6 +150,7 @@ const SlideCard: React.FC<{ slide: ParsedSlide; total: number }> = ({ slide, tot
 // Main Editor
 // ──────────────────────────────────────────────
 const DesignDocEditor: React.FC<DesignDocEditorProps> = ({
+  onRefine,
   initialContent = `---
 marp: true
 theme: default
@@ -182,10 +185,11 @@ theme: default
   onSave,
 }) => {
   const [content, setContent]             = useState(initialContent || '');
-  const [viewType, setViewType]           = useState<ViewType>('marp');
+  const [viewType, setViewType]           = useState<ViewType>('standard');
   const [layout, setLayout]               = useState<LayoutType>('split');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isExportOpen, setIsExportOpen]   = useState(false);
+  const [isMaximized, setIsMaximized]     = useState(false);
   const [exporting, setExporting]         = useState(false);
   const [slides, setSlides]               = useState<ParsedSlide[]>([]);
   const [marpCss, setMarpCss]             = useState('');
@@ -265,8 +269,10 @@ theme: default
     </div>
   );
 
-  return (
-    <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+  const editorBody = (
+    <div className={`flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden ${
+      isMaximized ? 'fixed inset-0 z-[200] rounded-none border-0' : 'h-full'
+    }`}>
 
       {/* Toolbar */}
       <div className="px-4 py-2 border-b border-slate-800 bg-slate-950/50 flex items-center justify-between shrink-0">
@@ -304,9 +310,16 @@ theme: default
         </div>
 
         <div className="flex items-center gap-2">
+          <button onClick={() => setIsMaximized(v => !v)}
+            title={isMaximized ? '축소' : '최대화'}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold rounded-lg border border-slate-700 transition-all">
+            {isMaximized
+              ? <><Minimize2 className="w-3 h-3" /> MINIMIZE</>
+              : <><Maximize2 className="w-3 h-3" /> MAXIMIZE</>}
+          </button>
           <button onClick={() => setIsPreviewOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold rounded-lg border border-slate-700 transition-all">
-            <Maximize2 className="w-3 h-3" /> FULL PREVIEW
+            <Eye className="w-3 h-3" /> FULL PREVIEW
           </button>
           <button onClick={() => setIsExportOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold rounded-lg shadow-lg shadow-blue-500/10 transition-all">
@@ -376,6 +389,19 @@ theme: default
         )}
       </div>
 
+      {/* AI Refine Bar */}
+      {onRefine && (
+        <RefinePromptBar
+          tabLabel="Design Doc"
+          defaultExpanded={false}
+          onApply={async (instruction) => {
+            const refined = await onRefine(instruction, content);
+            setContent(refined);
+            return refined;
+          }}
+        />
+      )}
+
       {/* Full Screen Preview */}
       {isPreviewOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col">
@@ -401,6 +427,8 @@ theme: default
       )}
     </div>
   );
+
+  return editorBody;
 };
 
 export default DesignDocEditor;
