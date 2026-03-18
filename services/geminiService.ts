@@ -75,7 +75,9 @@ const getSystemInstruction = (stage: GenerationStage, settings: GenerationSettin
       break;
     case 'sql':
       systemRulePrompt = "You are an expert database architect and SQL developer. ";
+      commentInstruction = `화면 설계서의 서비스 처리 섹션을 참고하여, 테이블이 없다면 필요한 테이블과 컬럼을 정의하는 SQL 스크립트를 생성하세요. 서비스 처리애 맞는 SQL문을 작성해주세요.`;
       stagePrompts =  `테이블 목록이 매우 크므로 절대 get_table_list를 먼저 호출하지 마십시오. 대신 search_tables 도구를 사용하여 필요한 키워드로 테이블을 검색한 후, 찾은 테이블에 대해 get_table_schema를 호출하여 구조를 파악하십시오.`;
+      
         break;
     case 'server':
       stagePrompts = `  Java Package Rules:
@@ -242,7 +244,7 @@ export async function generateExBuilderCode(
     onProgress?: (stage: GenerationStage, partialResult: Partial<GenerationResult>) => void,
     selectedStages?: GenerationStage[]
 ): Promise<GenerationResult> {
-    const allStages: GenerationStage[] = ['sql', 'design' ,'server', 'layout', 'script'];
+    const allStages: GenerationStage[] = ['design' , 'sql' ,'server', 'layout', 'script'];
     
     // 사용자가 선택한 단계가 있더라도, allStages의 순서를 기준으로 필터링하여 실행 순서를 보장합니다.
     const stagesToRun = selectedStages && selectedStages.length > 0 
