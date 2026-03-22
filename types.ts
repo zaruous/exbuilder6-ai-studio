@@ -55,6 +55,39 @@ export interface GenerationSettings {
   dbms: 'postgre' | 'mssql' | 'oracle';
 }
 
+// Auth Types
+export type UserRole = 'USER' | 'MANAGER' | 'ADMIN';
+
+export interface AuthUser {
+  username: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  token: string;
+}
+
+export interface UserDto {
+  id: number;
+  username: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  emailVerified: boolean;
+  createdAt: string;
+}
+
+export interface LoginFormData {
+  email: string;
+  password: string;
+}
+
+export interface RegisterFormData {
+  name: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
+
 // Community Features
 export interface Comment {
   id: string;

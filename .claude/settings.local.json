@@ -2,7 +2,15 @@
   "permissions": {
     "allow": [
       "Bash(npm install:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(cd:*)",
+      "Read(//c/Users/KYJ/.m2/repository/dev/langchain4j/langchain4j-mcp/1.12.2-beta22/**)",
+      "Bash(jar tf:*)",
+      "Read(//c/Users/KYJ/git/node/LUONCELL/public/**)",
+      "Read(//c/Users/KYJ/git/node/LUONCELL/public/images/**)",
+      "Read(//c/Users/KYJ/git/node/LUONCELL/**)",
+      "Bash(mkdir -p \"c:/Users/KYJ/git/node/LUONCELL/src/assets/images\")",
+      "Bash(cp \"c:/Users/KYJ/git/node/LUONCELL/public/images/\"* \"c:/Users/KYJ/git/node/LUONCELL/src/assets/images/\")"
     ]
   }
 }

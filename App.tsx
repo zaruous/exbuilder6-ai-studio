@@ -2,7 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { generateExBuilderCode, refineDesignDoc, refineCode, refineJavaFiles } from './services/geminiService';
 import { getSharedComponents, registerComponent } from './services/communityService';
-import { GenerationResult, TabType, GenerationSettings, SharedComponent, GenerationStage } from './types';
+import { getStoredUser, logout } from './services/authService';
+import { GenerationResult, TabType, GenerationSettings, SharedComponent, GenerationStage, AuthUser } from './types';
+import LoginPage from './components/LoginPage';
+import RegisterPage from './components/RegisterPage';
 import { SAMPLE_DESIGN_DOC, SAMPLE_CLX, SAMPLE_JS, SAMPLE_SQL, getSampleJavaFiles, PROMPT_PLACE_HOLDER } from './constants/sampleCode';
 import CodeBlock from './components/CodeBlock';
 import LogViewer from './components/LogViewer';
@@ -11,6 +14,7 @@ import RegisterModal from './components/RegisterModal';
 import ExploreView from './components/ExploreView';
 import ServerCodeViewer from './components/ServerCodeViewer';
 import DesignDocEditor from './components/DesignDocEditor';
+import AdminPage from './components/AdminPage';
 import {
   Code2,
   Terminal,
@@ -32,10 +36,12 @@ import {
   FileText,
   Sidebar,
   PanelRight,
-  PanelLeft
+  PanelLeft,
+  Shield,
 } from 'lucide-react';
 
-type ViewMode = 'generator' | 'explore';
+type ViewMode = 'generator' | 'explore' | 'admin';
+type AuthView = 'login' | 'register';
 
 const SETTINGS_KEY = 'exbuilder_settings';
 
@@ -48,6 +54,8 @@ const STAGE_OPTIONS: { value: GenerationStage; label: string; icon: any }[] = [
 ];
 
 const App: React.FC = () => {
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => getStoredUser());
+  const [authView, setAuthView] = useState<AuthView>('login');
   const [viewMode, setViewMode] = useState<ViewMode>('generator');
 
   // Generator State
@@ -229,6 +237,30 @@ const App: React.FC = () => {
     return getSampleJavaFiles(pkg);
   };
 
+  // 미인증 상태: 로그인/회원가입 화면 렌더링
+  if (!authUser) {
+    if (authView === 'register') {
+      return (
+        <RegisterPage
+          onGoToLogin={() => setAuthView('login')}
+          onVerified={() => setAuthView('login')}
+        />
+      );
+    }
+    return (
+      <LoginPage
+        onLoginSuccess={(user) => setAuthUser(user)}
+        onGoToRegister={() => setAuthView('register')}
+      />
+    );
+  }
+
+  const handleLogout = () => {
+    logout();
+    setAuthUser(null);
+    setAuthView('login');
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-950">
       <SettingsModal
@@ -273,6 +305,14 @@ const App: React.FC = () => {
             >
               <Search className="w-4 h-4" /> Explore
             </button>
+            {authUser.role === 'ADMIN' && (
+              <button
+                onClick={() => setViewMode('admin')}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${viewMode === 'admin' ? 'bg-red-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+              >
+                <Shield className="w-4 h-4" /> 관리
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 hidden sm:flex">
@@ -286,11 +326,30 @@ const App: React.FC = () => {
           >
             <Settings className="w-5 h-5" />
           </button>
+
+          {/* User Info & Logout */}
+          <div className="flex items-center gap-2 pl-2 border-l border-slate-700">
+            <span className="text-xs text-slate-400 hidden sm:block">{authUser.name}</span>
+            <button
+              onClick={handleLogout}
+              className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all"
+              title="로그아웃"
+            >
+              로그아웃
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Main Layout Content */}
       <main className="flex-1 overflow-hidden relative">
+
+        {/* VIEW 0: ADMIN */}
+        {viewMode === 'admin' && authUser.role === 'ADMIN' && (
+          <div className="absolute inset-0 z-20 bg-slate-950 animate-in fade-in duration-200">
+            <AdminPage />
+          </div>
+        )}
 
         {/* VIEW 1: EXPLORE */}
         {viewMode === 'explore' && (

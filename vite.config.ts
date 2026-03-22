@@ -12,12 +12,16 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       // Polyfill process.env.API_KEY so the @google/genai SDK works as requested
-      'process.env.API_KEY': JSON.stringify(env.VITE_API_KEY),
+      'process.env.API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY),
     },
     server: {
       port: 3000,
       open: true,
       proxy: {
+        '/api': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+        },
         '/ollama-api': {
           target: 'http://localhost:11434',
           changeOrigin: true,
