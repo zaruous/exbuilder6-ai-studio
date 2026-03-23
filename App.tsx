@@ -15,6 +15,7 @@ import ExploreView from './components/ExploreView';
 import ServerCodeViewer from './components/ServerCodeViewer';
 import DesignDocEditor from './components/DesignDocEditor';
 import AdminPage from './components/AdminPage';
+import ChangePasswordModal from './components/ChangePasswordModal';
 import {
   Code2,
   Terminal,
@@ -38,6 +39,7 @@ import {
   PanelRight,
   PanelLeft,
   Shield,
+  KeyRound,
 } from 'lucide-react';
 
 type ViewMode = 'generator' | 'explore' | 'admin';
@@ -67,6 +69,8 @@ const App: React.FC = () => {
   const [selectedStages, setSelectedStages] = useState<GenerationStage[]>([]);
   const [isStageMenuOpen, setIsStageMenuOpen] = useState(false);
   const [sidePannelVisible, setSidePannelVisible] = useState(true);
+
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   // Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -263,6 +267,11 @@ const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-950">
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
+
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
@@ -330,6 +339,13 @@ const App: React.FC = () => {
           {/* User Info & Logout */}
           <div className="flex items-center gap-2 pl-2 border-l border-slate-700">
             <span className="text-xs text-slate-400 hidden sm:block">{authUser.name}</span>
+            <button
+              onClick={() => setIsChangePasswordOpen(true)}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
+              title="비밀번호 변경"
+            >
+              <KeyRound className="w-4 h-4" />
+            </button>
             <button
               onClick={handleLogout}
               className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-all"

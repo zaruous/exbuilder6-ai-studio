@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Cpu, Mail, Lock, User, AlertCircle, Loader2, CheckCircle, RefreshCw } from 'lucide-react';
-import { register, verifyEmail, resendCode } from '../services/authService';
+import { register, verifyEmail, resendCode, getPasswordPolicy } from '../services/authService';
 
 type Step = 'register' | 'verify';
 
@@ -20,6 +20,11 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onGoToLogin, onVerified }) 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [policy, setPolicy] = useState<{ pattern: string; message: string } | null>(null);
+
+  useEffect(() => {
+    getPasswordPolicy().then(setPolicy).catch(() => {});
+  }, []);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,8 +34,8 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onGoToLogin, onVerified }) 
       setError('비밀번호가 일치하지 않습니다.');
       return;
     }
-    if (password.length < 8) {
-      setError('비밀번호는 최소 8자 이상이어야 합니다.');
+    if (policy && !new RegExp(policy.pattern).test(password)) {
+      setError(policy.message);
       return;
     }
 
@@ -169,9 +174,8 @@ const RegisterPage: React.FC<RegisterPageProps> = ({ onGoToLogin, onVerified }) 
                     type="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    placeholder="8자 이상"
+                    placeholder={policy?.message ?? '비밀번호 입력'}
                     required
-                    minLength={8}
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
                   />
                 </div>

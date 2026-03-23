@@ -63,6 +63,48 @@ export function logout(): void {
   localStorage.removeItem(AUTH_KEY);
 }
 
+export async function getPasswordPolicy(): Promise<{ pattern: string; message: string; verificationEnabled: boolean }> {
+  const res = await fetch(`${API_BASE}/password-policy`);
+  return res.json();
+}
+
+export async function forgotPassword(email: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || '요청 실패');
+  return data.message;
+}
+
+export async function resetPassword(email: string, code: string, newPassword: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code, newPassword }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || '요청 실패');
+  return data.message;
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<string> {
+  const user = getStoredUser();
+  const res = await fetch(`${API_BASE}/change-password`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(user?.token ? { Authorization: `Bearer ${user.token}` } : {}),
+    },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || '비밀번호 변경 실패');
+  return data.message;
+}
+
 export function getAuthHeader(): Record<string, string> {
   const user = getStoredUser();
   if (user?.token) {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { UserDto, UserRole } from '../types';
-import { getUsers, updateRole, forceVerify, deleteUser } from '../services/adminService';
-import { Shield, RefreshCw, Trash2, CheckCircle, AlertCircle, Loader2, Users } from 'lucide-react';
+import { getUsers, updateRole, forceVerify, resetPassword, deleteUser } from '../services/adminService';
+import { Shield, RefreshCw, Trash2, CheckCircle, AlertCircle, Loader2, Users, KeyRound } from 'lucide-react';
 
 const ROLES: UserRole[] = ['USER', 'MANAGER', 'ADMIN'];
 
@@ -54,6 +54,19 @@ const AdminPage: React.FC = () => {
       const res = await forceVerify(id);
       toast('ok', res.message);
       setUsers(prev => prev.map(u => u.id === id ? { ...u, emailVerified: true } : u));
+    } catch (e: any) {
+      toast('err', e.message);
+    } finally {
+      setPendingId(null);
+    }
+  };
+
+  const handleResetPassword = async (id: number, username: string) => {
+    if (!window.confirm(`'${username}' 비밀번호를 아이디와 동일하게 초기화하시겠습니까?`)) return;
+    setPendingId(id);
+    try {
+      const res = await resetPassword(id);
+      toast('ok', res.message);
     } catch (e: any) {
       toast('err', e.message);
     } finally {
@@ -174,13 +187,22 @@ const AdminPage: React.FC = () => {
                     {pendingId === user.id ? (
                       <Loader2 className="w-4 h-4 animate-spin text-slate-500 mx-auto" />
                     ) : (
-                      <button
-                        onClick={() => handleDelete(user.id, user.username)}
-                        className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                        title="삭제"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => handleResetPassword(user.id, user.username)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
+                          title="비밀번호 초기화 (아이디와 동일)"
+                        >
+                          <KeyRound className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(user.id, user.username)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                          title="삭제"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>

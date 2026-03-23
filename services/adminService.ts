@@ -31,5 +31,8 @@ export const updateRole = (id: number, role: UserRole) =>
 export const forceVerify = (id: number) =>
   request<{ message: string }>('PUT', `/users/${id}/verify`);
 
+export const resetPassword = (id: number) =>
+  request<{ message: string }>('PUT', `/users/${id}/reset-password`);
+
 export const deleteUser = (id: number) =>
   request<{ message: string }>('DELETE', `/users/${id}`);
