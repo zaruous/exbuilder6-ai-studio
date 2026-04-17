@@ -81,7 +81,7 @@ const App: React.FC = () => {
         gemini: { modelName: 'gemini-3-pro-preview' },
         openai: { modelName: 'gpt-4o', baseUrl: 'https://api.openai.com/v1' },
         ollama: { modelName: 'glm-5:cloud', baseUrl: 'http://localhost:11434/v1' },
-        'web-service': { modelName: 'glm-5:cloud', baseUrl: 'http://localhost:8080/api/generate' }
+        'web-service': { modelName: 'glm-5:cloud', baseUrl: '/api/generate' }
       },
       temperature: 0.3,
       language: 'ko',

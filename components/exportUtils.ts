@@ -13,7 +13,12 @@ import { asBlob } from 'html-docx-js-typescript';
 import { Marp } from '@marp-team/marp-core';
 import { marked } from 'marked';
 
-const marpInstance = new Marp({ html: true, inlineSVG: false });
+const marpInstance = new Marp({
+  html: true,
+  inlineSVG: false,
+  emoji: { shortcode: true, unicode: false },
+  script: { source: 'inline' },
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 공통: 다운로드 트리거

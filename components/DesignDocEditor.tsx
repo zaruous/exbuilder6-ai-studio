@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -27,7 +27,16 @@ interface DesignDocEditorProps {
   onRefine?: (instruction: string, currentContent: string) => Promise<string>;
 }
 
-const marpInstance = new Marp({ html: true, inlineSVG: false });
+// Twemoji 기본은 cdn.jsdelivr.net 이미지 URL — 사내망 차단 시 깨짐. :shortcode:는 유니코드로만 변환.
+const marpInstance = new Marp({
+  html: true,
+  inlineSVG: false,
+  emoji: {
+    shortcode: true,
+    unicode: false,
+  },
+  script: { source: 'inline' },
+});
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -120,17 +129,72 @@ const SLIDE_THEMES = [
   { bg: 'bg-amber-50',  text: 'prose-stone',  accent: 'border-amber-500'   },
 ];
 
+/** Marp default 테마: section { width:1280px; height:720px; font-size:29px; padding:78.5px } */
+const MARP_SLIDE_W = 1280;
+const MARP_SLIDE_H = 720;
+const MARP_ASPECT  = MARP_SLIDE_H / MARP_SLIDE_W; // 0.5625
+
+const MarpSlideCard: React.FC<{ slide: ParsedSlide; total: number; accentClass: string }> = ({ slide, total, accentClass }) => {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardW, setCardW] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setCardW(w);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const scale = cardW > 0 ? cardW / MARP_SLIDE_W : 0;
+  const visibleH = cardW > 0 ? cardW * MARP_ASPECT : 0;
+
+  return (
+    <div
+      ref={cardRef}
+      className={`relative rounded-xl shadow-2xl border-t-4 shrink-0 ${accentClass} bg-slate-950`}
+      style={{ width: '100%', maxWidth: 854 }}
+    >
+      <span className="absolute top-3 right-4 text-[10px] font-mono text-slate-300 z-20 pointer-events-none drop-shadow">
+        {slide.index + 1} / {total}
+      </span>
+      <div className="overflow-hidden" style={{ height: visibleH || 'auto' }}>
+        <div
+          style={{
+            width: MARP_SLIDE_W,
+            height: MARP_SLIDE_H,
+            transform: scale > 0 ? `scale(${scale})` : 'scale(0.5)',
+            transformOrigin: 'top left',
+          }}
+        >
+          <div className="marpit" dangerouslySetInnerHTML={{ __html: slide.html! }} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SlideCard: React.FC<{ slide: ParsedSlide; total: number }> = ({ slide, total }) => {
   const theme = SLIDE_THEMES[slide.index % SLIDE_THEMES.length];
+
+  if (slide.html) {
+    return <MarpSlideCard slide={slide} total={total} accentClass={theme.accent} />;
+  }
+
   return (
     <div
       className={`relative rounded-xl shadow-2xl overflow-hidden border-t-4 ${theme.accent} ${theme.bg}`}
-      style={{ width: '100%', maxWidth: '854px', aspectRatio: '16/9', flexShrink: 0 }}
+      style={{ width: '100%', maxWidth: 854, aspectRatio: '16/9', flexShrink: 0 }}
     >
       <span className="absolute top-3 right-4 text-[10px] font-mono text-slate-400 z-10">
         {slide.index + 1} / {total}
       </span>
-      <div className={`w-full h-full overflow-hidden flex flex-col justify-center
+      <div className={`w-full h-full overflow-auto flex flex-col justify-center
         prose ${theme.text} max-w-none
         prose-h1:text-4xl prose-h1:font-black prose-h1:leading-tight prose-h1:mb-3
         prose-h2:text-2xl prose-h2:font-bold prose-h2:mb-2
@@ -138,9 +202,7 @@ const SlideCard: React.FC<{ slide: ParsedSlide; total: number }> = ({ slide, tot
         prose-p:text-base prose-p:leading-relaxed
         prose-li:text-base prose-li:leading-relaxed
         prose-table:text-sm prose-code:text-xs`}>
-        {slide.html
-          ? <div className="h-full w-full" dangerouslySetInnerHTML={{ __html: slide.html }} />
-          : <ReactMarkdown remarkPlugins={[remarkGfm]}>{slide.content}</ReactMarkdown>}
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{slide.content}</ReactMarkdown>
       </div>
     </div>
   );
@@ -206,12 +268,16 @@ theme: default
         setMarpCss(css);
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
-        const parsed: ParsedSlide[] = Array.from(doc.querySelectorAll('section')).map((s, i) => ({
-          content: s.innerText,
+        const marpit = doc.querySelector('div.marpit');
+        const sectionEls = marpit
+          ? Array.from(marpit.querySelectorAll(':scope > section'))
+          : Array.from(doc.querySelectorAll('section'));
+        const parsed: ParsedSlide[] = sectionEls.map((s, i) => ({
+          content: s.textContent ?? '',
           html: s.outerHTML,
           index: i,
         }));
-        setSlides(parsed);
+        setSlides(parsed.length > 0 ? parsed : parseSlides(content));
       } catch {
         setSlides(parseSlides(content));
       }

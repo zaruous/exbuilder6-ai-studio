@@ -1,6 +1,33 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { GenerationResult, GenerationSettings, GenerationStage } from "../types";
+import { getAuthHeader } from "./authService";
+
+/** 개발 시 Vite 프록시(/api→8080)를 쓰도록 localhost:8080 절대 URL을 상대 경로로 바꿉니다. */
+function webServiceRequestUrl(raw: string): string {
+    const t = raw.trim();
+    if (t.startsWith("/")) return t;
+    if (import.meta.env.DEV) {
+        try {
+            const u = new URL(t);
+            if ((u.hostname === "localhost" || u.hostname === "127.0.0.1") && u.port === "8080") {
+                return `${u.pathname}${u.search}`;
+            }
+        } catch {
+            /* 설정값이 URL이 아니면 그대로 둠 */
+        }
+    }
+    return t;
+}
+
+function webServiceHeaders(): HeadersInit {
+    return { "Content-Type": "application/json", ...getAuthHeader() };
+}
+
+async function readWebServiceError(response: Response): Promise<string> {
+    const body = await response.text();
+    return `Web Service Error (${response.status}): ${body || response.statusText}`;
+}
 
 // Helper to get stage-specific instructions
 const getStagePrompt = (stage: GenerationStage, userPrompt: string, context?: Partial<GenerationResult>) => {
@@ -219,9 +246,9 @@ async function callProviderForStage(
     if (settings.provider === 'web-service') {
         if (!currentConfig.baseUrl) throw new Error("Base URL required.");
         const jsonPrompt = getJsonSchemaPrompt(stage);
-        const response = await fetch(currentConfig.baseUrl, {
+        const response = await fetch(webServiceRequestUrl(currentConfig.baseUrl), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: webServiceHeaders(),
             body: JSON.stringify({
                 prompt: fullPrompt,
                 systemPrompt: systemInstruction + "\n" + jsonPrompt, // 시스템 프롬프트에 JSON 스키마 추가
@@ -230,7 +257,7 @@ async function callProviderForStage(
                 settings: { ...settings }
             })
         });
-        if (!response.ok) throw new Error(`Web Service Error: ${await response.text()}`);
+        if (!response.ok) throw new Error(await readWebServiceError(response));
         return await response.json();
     }
 
@@ -341,9 +368,9 @@ Return ONLY the complete updated Markdown. No code fences, no extra commentary.`
 
     if (settings.provider === 'web-service') {
         if (!currentConfig.baseUrl) throw new Error('Base URL required.');
-        const response = await fetch(currentConfig.baseUrl, {
+        const response = await fetch(webServiceRequestUrl(currentConfig.baseUrl), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: webServiceHeaders(),
             body: JSON.stringify({
                 prompt: userPrompt,
                 systemPrompt,
@@ -352,7 +379,7 @@ Return ONLY the complete updated Markdown. No code fences, no extra commentary.`
                 settings: { ...settings }
             })
         });
-        if (!response.ok) throw new Error(`Web Service Error: ${await response.text()}`);
+        if (!response.ok) throw new Error(await readWebServiceError(response));
         const data = await response.json();
         return (data.designDoc || data.content || '').trim() || currentContent;
     }
@@ -421,12 +448,12 @@ Return ONLY the complete updated code. No code fences, no extra commentary.`;
 
     if (settings.provider === 'web-service') {
         if (!cfg.baseUrl) throw new Error('Base URL required.');
-        const response = await fetch(cfg.baseUrl, {
+        const response = await fetch(webServiceRequestUrl(cfg.baseUrl), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: webServiceHeaders(),
             body: JSON.stringify({ prompt: userPrompt, systemPrompt, stage: language, mode: 'refine', settings: { ...settings } })
         });
-        if (!response.ok) throw new Error(`Web Service Error: ${await response.text()}`);
+        if (!response.ok) throw new Error(await readWebServiceError(response));
         const data = await response.json();
         // 서버 응답 필드: sql→sqlCode, xml→clxCode, javascript→jsCode
         const fieldMap: Record<string, string> = { sql: 'sqlCode', xml: 'clxCode', javascript: 'jsCode' };
@@ -506,12 +533,12 @@ Return a JSON object: { "javaFiles": [ { "fileName": string, "packagePath": stri
 
     if (settings.provider === 'web-service') {
         if (!cfg.baseUrl) throw new Error('Base URL required.');
-        const response = await fetch(cfg.baseUrl, {
+        const response = await fetch(webServiceRequestUrl(cfg.baseUrl), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: webServiceHeaders(),
             body: JSON.stringify({ prompt: userPrompt, systemPrompt, stage: 'server', mode: 'refine', settings: { ...settings } })
         });
-        if (!response.ok) throw new Error(`Web Service Error: ${await response.text()}`);
+        if (!response.ok) throw new Error(await readWebServiceError(response));
         const data = await response.json();
         return data.javaFiles || files;
     }
