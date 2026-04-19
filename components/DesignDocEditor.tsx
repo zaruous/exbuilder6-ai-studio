@@ -256,6 +256,48 @@ theme: default
   const [slides, setSlides]               = useState<ParsedSlide[]>([]);
   const [marpCss, setMarpCss]             = useState('');
   const previewRef                        = useRef<HTMLDivElement>(null);
+  const monacoEditorRef                   = useRef<any>(null);
+
+  // Monaco DOM에 캡처 단계 드롭 리스너 부착
+  // capture:true → Monaco 내부 핸들러보다 먼저 실행되어 이벤트 가로챔
+  const handleEditorMount = (editor: any) => {
+    monacoEditorRef.current = editor;
+    const domNode: HTMLElement | null = editor.getDomNode();
+    if (!domNode) return;
+
+    const onDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (!files.length) return;
+
+      const supported = files.filter(f =>
+        /\.(md|txt|markdown)$/i.test(f.name) || f.type.startsWith('text/')
+      );
+      if (!supported.length) {
+        alert('지원 형식: .md · .txt · .markdown');
+        return;
+      }
+
+      Promise.all(supported.map(f => f.text())).then(texts => {
+        const joined = texts.join('\n\n---\n\n');
+        const newContent = joined;
+        editor.setValue(newContent);
+        setContent(newContent);
+      });
+    };
+
+    domNode.addEventListener('dragover', onDragOver, true);
+    domNode.addEventListener('drop', onDrop, true);
+  };
 
   useEffect(() => {
     if (initialContent != null) setContent(initialContent);
@@ -407,6 +449,7 @@ theme: default
         {(layout === 'split' || layout === 'edit') && (
           <div className={`${layout === 'split' ? 'w-1/2' : 'w-full'} border-r border-slate-800`}>
             <Editor height="100%" defaultLanguage="markdown" value={content}
+              onMount={handleEditorMount}
               onChange={v => setContent(v || '')} theme="vs-dark"
               options={{
                 minimap: { enabled: false }, fontSize: 14, lineNumbers: 'on',
